@@ -38,7 +38,6 @@ clones-base-contracts/
 ├─ tsconfig.json
 ├─ .solhint.json
 ├─ .env.example
-├─ SECURITY.md
 ├─ LICENSE
 └─ README.md
 ```
@@ -204,17 +203,3 @@ Coverage and gas reporting can be integrated in CI.
   * static analysis (Slither),
   * property-based testing (Echidna),
   * external review where appropriate.
-
----
-
-## Version Pinning
-
-* `hardhat@^2.26.0`
-* `@nomicfoundation/hardhat-ethers@^3.1.0` (Ethers v6)
-* `@nomicfoundation/hardhat-verify@^2.0.14`
-* `@openzeppelin/contracts@^5.4.0`
-* `@openzeppelin/hardhat-upgrades@^3.9.1`
-* `dotenv@^17.2.1`
-* `solidity` `0.8.30`
-
-> Do not mix Hardhat 3 plugins with Hardhat 2. If you later migrate to Hardhat 3, re-evaluate plugin compatibility.
