@@ -1,0 +1,12 @@
+{
+    "contracts": {
+        "Hello": {
+            "address": "0xaabbccddeeff0011223344556677889900aabbcc",
+            "args": [
+                "Hello CLONES!"
+            ],
+            "txHash": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "impl": null
+        }
+    }
+}

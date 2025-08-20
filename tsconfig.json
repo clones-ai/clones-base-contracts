@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "CommonJS",
+        "moduleResolution": "Node",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "types": [
+            "hardhat",
+            "chai",
+            "mocha",
+            "@nomicfoundation/hardhat-ethers"
+        ],
+        "resolveJsonModule": true,
+        "outDir": "dist"
+    },
+    "include": [
+        "hardhat.config.ts",
+        "scripts",
+        "test",
+        "ignition",
+        "typechain-types"
+    ]
+}

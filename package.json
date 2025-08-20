@@ -1,0 +1,40 @@
+{
+    "name": "clones-base-contracts",
+    "version": "1.0.0",
+    "private": true,
+    "description": "CLONES project smart contracts for Base (L2). Hardhat 2 + Ethers v6 + OpenZeppelin v5.",
+    "license": "MIT",
+    "scripts": {
+        "build": "hardhat compile",
+        "clean": "hardhat clean",
+        "test": "hardhat test",
+        "coverage": "hardhat coverage",
+        "lint:sol": "solhint 'contracts/**/*.sol'",
+        "deploy:base": "hardhat run scripts/deploy.ts --network base",
+        "deploy:baseSepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
+        "verify": "ts-node scripts/verify.ts",
+        "verify:base": "ts-node scripts/verify.ts --network base",
+        "verify:baseSepolia": "ts-node scripts/verify.ts --network baseSepolia",
+        "upgrade": "hardhat run scripts/upgrade.ts"
+    },
+    "devDependencies": {
+        "hardhat": "^2.26.0",
+        "@nomicfoundation/hardhat-ethers": "^3.1.0",
+        "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
+        "@nomicfoundation/hardhat-verify": "^2.0.14",
+        "hardhat-gas-reporter": "^2.2.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.5.4",
+        "solhint": "^4.5.3",
+        "solhint-plugin-prettier": "^0.1.0",
+        "chai": "^4.4.1",
+        "@types/chai": "^4.3.16",
+        "@types/mocha": "^10.0.6"
+    },
+    "dependencies": {
+        "ethers": "^6.13.0",
+        "@openzeppelin/contracts": "^5.4.0",
+        "@openzeppelin/hardhat-upgrades": "^3.9.1",
+        "dotenv": "^17.2.1"
+    }
+}

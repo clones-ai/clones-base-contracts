@@ -1,0 +1,11 @@
+{
+  "contracts": {
+    "Hello": {
+      "address": "0x4e901b3Eb5DA9C2eD2a431bE7a48f84021D11543",
+      "args": [
+        "Hello CLONES!"
+      ],
+      "txHash": "0xed77cbcbb598e377c0044bda33b60a4cf6080cb850a4761ba0243ee9310a9c16"
+    }
+  }
+}
