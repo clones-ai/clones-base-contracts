@@ -10,6 +10,7 @@
             "hardhat",
             "chai",
             "mocha",
+            "node",
             "@nomicfoundation/hardhat-ethers"
         ],
         "resolveJsonModule": true,

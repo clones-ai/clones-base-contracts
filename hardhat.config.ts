@@ -6,6 +6,7 @@ import "@nomicfoundation/hardhat-ethers";   // Ethers v6 adapter
 import "@nomicfoundation/hardhat-verify";   // Verify v2 (Etherscan-compatible)
 import "hardhat-gas-reporter";
 import "@openzeppelin/hardhat-upgrades";
+import "@typechain/hardhat";
 
 dotenv.config();
 
@@ -62,6 +63,11 @@ const config: HardhatUserConfig = {
                 }
             }
         ]
+    },
+
+    typechain: {
+        outDir: "typechain-types",
+        target: "ethers-v6",
     },
 
     gasReporter: {
