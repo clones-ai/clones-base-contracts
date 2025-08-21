@@ -5,3 +5,4 @@ artifacts
 coverage
 typechain-types
 dist
+coverage.json

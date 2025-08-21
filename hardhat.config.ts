@@ -8,6 +8,7 @@ import "@nomicfoundation/hardhat-chai-matchers";
 import "hardhat-gas-reporter";
 import "@openzeppelin/hardhat-upgrades";
 import "@typechain/hardhat";
+import "solidity-coverage";
 
 dotenv.config();
 
