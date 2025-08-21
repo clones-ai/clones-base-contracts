@@ -1,205 +1,100 @@
-# CLONES – Base (L2) Smart Contracts
+# Clones Base Contracts
 
-Smart contracts for the **CLONES** project deployed on **Base** L2.
+This repository contains the official smart contracts for the Clones protocol on the Base L2 network. The project is structured to support multiple, independent contracts that work together to form the Clones ecosystem.
 
-**Stack:** Hardhat **2.x**, Ethers **v6**, OpenZeppelin Contracts **v5.4**, OpenZeppelin Hardhat Upgrades **v3.9**, Hardhat Verify **v2**, Solhint, TypeScript.
-
----
-
-## Requirements
-
-* Node.js 18+ (or 20+), npm 9+
-* Access to Base RPC endpoints (Mainnet & Sepolia)
-* A deployer key (use a multisig for production)
-* Basescan API key (for verification)
+This project is built with **Hardhat**, **Ethers.js v6**, and **OpenZeppelin Contracts v5 (Upgradeable)**.
 
 ---
 
-## Project Layout
+## Project Architecture & Standards
 
-```
-clones-base-contracts/
-├─ contracts/
-│  ├─ Hello.sol                 # example contract (replace with your modules)
-│  └─ utils/                    # shared libraries/helpers
-├─ scripts/
-│  ├─ deploy.ts                 # generic deployment script
-│  ├─ verify.ts                 # generic verification script
-│  ├─ upgrade.ts                # generic upgrade script (only if using proxies)
-│  └─ utils.ts                  # helper functions (args parsing, registry mgmt)
-├─ deployments/                 # JSON registries of deployed addresses
-│  ├─ base.json
-│  └─ baseSepolia.json
-├─ test/
-│  ├─ Hello.t.ts
-│  └─ <your-tests>.t.ts
-├─ hardhat.config.ts
-├─ package.json
-├─ tsconfig.json
-├─ .solhint.json
-├─ .env.example
-├─ LICENSE
-└─ README.md
-```
+This repository is designed as a multi-contract workspace. All contracts developed herein adhere to a common set of high-quality standards to ensure security, maintainability, and efficiency.
+
+### Core Principles
+- **Security First:** Contracts are developed with a defense-in-depth mindset, incorporating protections against common vulnerabilities (reentrancy, access control failures), L2-specific risks, and economic exploits.
+- **Gas Optimization:** We prioritize gas efficiency for frequently called functions by using modern Solidity patterns like custom errors, storage pointers, and optimized data structures.
+- **Upgradeable by Default:** Major stateful contracts are built using the UUPS proxy pattern to allow for seamless future upgrades.
+- **Clarity & Maintainability:** Code is written to be clear, well-documented with NatSpec, and thoroughly tested.
 
 ---
 
-## Installation
+## Project Contracts
 
+This section provides an overview of the individual smart contracts within the Clones ecosystem.
+
+### 1. RewardPool
+
+The `RewardPool` is a central contract designed to aggregate rewards from multiple sources (factories) and allow users (farmers) to withdraw them securely and efficiently.
+
+#### Key Features:
+- **Configurable:** Core parameters (fees, treasury, cooldowns) are managed via a `PoolConfig` struct.
+- **Role-Based Access:** Uses `AccessControlEnumerable` for transparent, on-chain management of roles.
+- **L2-Aware:** Includes a built-in, configurable check for sequencer uptime on Base.
+- **Robust Security:** Features reentrancy protection, nonce-based withdrawals, rate limiting, fee-on-transfer token rejection, and more.
+- **Safe Fee Collection:** Buffers protocol fees to prevent withdrawals from failing due to an incompatible treasury.
+
+*(As new contracts are added to the project, they will be documented here.)*
+
+---
+
+## Development & Deployment
+
+### Environment Setup
+
+1. **Install Dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Configure Environment:**
+   Create a `.env` file in the project root by copying `.env.example`. Fill in the required variables:
+   ```env
+   PRIVATE_KEY=your_wallet_private_key
+   BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+   ETHERSCAN_API_KEY=your_basescan_api_key
+   ```
+   **Note:** Never commit your `.env` file.
+
+### Testing
+
+Run the full test suite for all contracts:
 ```bash
-npm install
+npx hardhat test
 ```
 
-If you migrated from a different setup, clear prior artifacts:
+### Deployment Guide (Example: RewardPool on Base Sepolia)
 
-```bash
-rm -rf node_modules package-lock.json
-npm cache verify
-npm install
-```
+The deployment process is managed via scripts in the `scripts/` directory and is designed to be generic.
 
----
+**To deploy a contract, you will need to edit the `scripts/deploy.ts` file to specify which contract you are deploying and its constructor arguments.**
 
-## Environment
+Here is an example workflow for deploying the `RewardPool` contract to the Base Sepolia testnet:
 
-Copy and edit:
+1. **Configure `scripts/deploy.ts`:**
+   Modify the script to target the `RewardPool` contract and provide its `initialize` arguments. For example:
+   ```typescript
+   // In scripts/deploy.ts
+   const contractName = "RewardPool";
+   const contractArgs = [
+       "0xADMIN_ADDRESS",      // admin
+       "0xTREASURY_ADDRESS",   // treasury
+       1000,                   // feeBps (e.g., 10%)
+       "0xBASE_SEPOLIA_SEQUENCER_FEED" // sequencerUptimeFeed
+   ];
+   ```
 
-```bash
-cp .env.example .env
-```
+2. **Run the Deployment:**
+   Execute the deployment script, targeting the `baseSepolia` network:
+   ```bash
+   npx hardhat run scripts/deploy.ts --network baseSepolia
+   ```
+   The script will deploy the contract and log its address to the console.
 
-`.env` keys:
+3. **Verify on Basescan:**
+   Use the `verify` task with the address output from the previous step. The verification process for UUPS proxies is handled by the `@openzeppelin/hardhat-upgrades` plugin.
+   ```bash
+   npx hardhat verify --network baseSepolia <DEPLOYED_PROXY_ADDRESS>
+   ```
 
-```
-PRIVATE_KEY=0xabc...dead
-BASE_RPC_URL=https://mainnet.base.org
-BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
-BASESCAN_KEY=your_basescan_api_key
-CMC_KEY=your_coinmarketcap_api_key
-REPORT_GAS=false
-```
-
-> Never commit real keys. For production, route admin roles through a Safe (multisig).
-> Base RPCs provided by `*.base.org` are **public/rate-limited** → use a provider (Alchemy, Infura, etc.) for production workloads.
-
----
-
-## Networks
-
-* **Base Mainnet** — `chainId: 8453`, default RPC `https://mainnet.base.org`, explorer `https://basescan.org`
-* **Base Sepolia** — `chainId: 84532`, default RPC `https://sepolia.base.org`, explorer `https://sepolia.basescan.org`
-
-`hardhat.config.ts` includes `customChains` for Basescan with `@nomicfoundation/hardhat-verify`.
-
----
-
-## Scripts
-
-All scripts are **generic**: you can use them for any contract in the repo.
-They also update a `deployments/<network>.json` registry to keep track of deployed addresses and constructor args.
-
-**Note:** The deployment script now uses environment variables to avoid conflicts with Hardhat's argument parsing.
-
-```bash
-# Compile & test
-npm run build
-npm test
-
-# Deploy Hello contract to Base Sepolia (with constructor args via environment variables)
-CONTRACT_NAME=Hello CONTRACT_ARGS='["Hello CLONES!"]' npx hardhat run scripts/deploy.ts --network baseSepolia
-
-# Alternative: set environment variables separately
-export CONTRACT_NAME=Hello
-export CONTRACT_ARGS='["Hello CLONES!"]'
-npx hardhat run scripts/deploy.ts --network baseSepolia
-
-# Verify using registry alias (specify network)
-npm run verify:baseSepolia -- --name Hello
-
-# Verify explicitly with address + args
-npm run verify:baseSepolia -- --address 0xContractAddress --args '["Hello CLONES!"]'
-
-# Or use the generic verify script with network parameter
-npm run verify -- --network baseSepolia --name Hello
-
-**Note:** The verify script now provides the exact command to run for verification since it can't execute Hardhat's verify task directly.
-
-# Upgrade proxy (if you use upgradeable contracts)
-PROXY_ADDRESS=0xProxy IMPL_NAME=ImplV2 npm run upgrade -- --network <your-network>
-```
-
----
-
-## Hardhat Configuration
-
-* Solidity: `0.8.30` (optimizer enabled)
-* Ethers v6 plugin for Hardhat 2.x
-* Hardhat Verify v2 with Basescan `customChains`
-* Gas reporter (optional)
-
-example highlights from `hardhat.config.ts`:
-
-```ts
-solidity: { version: "0.8.30", settings: { optimizer: { enabled: true, runs: 600 } } },
-networks: {
-  base:        { chainId: 8453,  url: process.env.BASE_RPC_URL,        accounts: [process.env.PRIVATE_KEY!] },
-  baseSepolia: { chainId: 84532, url: process.env.BASE_SEPOLIA_RPC_URL, accounts: [process.env.PRIVATE_KEY!] }
-},
-etherscan: {
-  apiKey: { base: process.env.BASESCAN_KEY!, baseSepolia: process.env.BASESCAN_KEY! },
-  customChains: [
-    { network: "base", chainId: 8453, urls: { apiURL: "https://api.basescan.org/api", browserURL: "https://basescan.org" } },
-    { network: "baseSepolia", chainId: 84532, urls: { apiURL: "https://api-sepolia.basescan.org/api", browserURL: "https://sepolia.basescan.org" } }
-  ]
-}
-```
-
----
-
-## Testing
-
-* Write unit and integration tests under `test/` using Mocha/Chai.
-* Prefer **behavioral assertions** and cover:
-
-  * access control (happy/revert paths),
-  * state transitions & events,
-  * boundary conditions,
-  * failure scenarios (reentrancy, paused state, invalid params),
-  * at least basic fuzzing with randomized inputs (where meaningful).
-
-Run:
-
-```bash
-npm test
-```
-
-Coverage and gas reporting can be integrated in CI.
-
----
-
-## Code Quality & Style
-
-* **Solhint** with a strict ruleset (`.solhint.json`):
-
-  * pin compiler: `^0.8.30`
-  * explicit visibilities
-  * reason strings length
-* Prefer **custom errors** over `require(string)` for gas-efficient reverts.
-* Emit events for privileged state changes and external-facing mutations.
-* Document invariants and trust assumptions in NatSpec.
-
----
-
-## Security Practices
-
-* Principle of least privilege; separate `DEFAULT_ADMIN_ROLE` and operational roles.
-* Protect external state-changing functions with proper checks (`onlyRole`, `whenNotPaused`, `nonReentrant` where needed).
-* Avoid raw `delegatecall` and `selfdestruct`.
-* No unbounded loops over user-controlled arrays in hot paths.
-* Validate external addresses and params.
-* Admin keys in **Safe (multisig)**; time-lock high-impact operations if governance is introduced.
-* Before mainnet:
-
-  * static analysis (Slither),
-  * property-based testing (Echidna),
-  * external review where appropriate.
+4. **Post-Deployment:**
+   After deployment, use a tool like Etherscan or a custom script to perform necessary post-deployment actions, such as granting roles (`grantRole`) to the appropriate addresses.
