@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {AggregatorV3Interface} from "contracts/RewardPool.sol";
+import {IAggregatorV3Interface} from "contracts/RewardPool.sol";
 
 /// @title MockSequencerUptimeFeed
 /// @notice A mock for the Chainlink L2 Sequencer Uptime Feed.
 /// @dev Allows setting the sequencer status for testing purposes.
-contract MockSequencerUptimeFeed is AggregatorV3Interface {
+contract MockSequencerUptimeFeed is IAggregatorV3Interface {
     int256 private _answer = 0; // 0 = up, 1 = down
     uint8 private _decimals = 0;
     string private _description = "Mock Sequencer Uptime Feed";
