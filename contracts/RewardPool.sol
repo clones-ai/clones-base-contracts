@@ -987,11 +987,12 @@ contract RewardPool is
      * @notice Authorizes an upgrade to a new implementation contract.
      * @dev Only the address with `DEFAULT_ADMIN_ROLE` can authorize an upgrade.
      *      This function is required by the UUPS upgradeable pattern.
-     * @param newImplementation The address of the new implementation contract.
      */
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function _authorizeUpgrade()
+        internal
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         // Intentionally left blank to allow admin control.
     }
 
@@ -1010,7 +1011,6 @@ contract RewardPool is
 
     /**
      * @notice Calculates the total rewards for a given set of factories and clears them.
-     * @dev Calculates the total rewards for a given set of factories and clears them.
      * @param token The token address.
      * @param factories The list of factories to calculate rewards from.
      * @param farmer The farmer's address.
