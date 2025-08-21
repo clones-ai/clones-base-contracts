@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.30;
+pragma solidity 0.8.30;
 
 /**
  * @title RewardPool (UUPS Upgradeable)
@@ -72,6 +72,12 @@ contract RewardPool is
     error AccountingError();
     error TooManyTokensInSweep();
     error SequencerDown();
+    error TooManyBatches();
+    error TooManyFactories();
+    error ArrayTooLong();
+    error SequencerFeedUnavailable();
+    error FeedCannotBeZeroAddress();
+    error FactoryCannotBeZeroAddress();
 
     // --- Specific Error Messages ---
     error AdminCannotBeZeroAddress();
@@ -187,14 +193,12 @@ contract RewardPool is
      * @param farmer The address of the farmer associated with the task.
      * @param factory The address of the factory that validated the task.
      * @param blockNumber The block number at which the validation occurred.
-     * @param blockHash The hash of the previous block, used for security.
      */
     event TaskValidated(
         bytes32 indexed taskId,
         address indexed farmer,
         address indexed factory,
-        uint256 blockNumber,
-        bytes32 blockHash
+        uint256 blockNumber
     );
 
     /**
@@ -253,6 +257,66 @@ contract RewardPool is
         uint256 indexed amount
     );
 
+    /**
+     * @notice Emitted when a token check (support or compatibility) fails.
+     * @param token The address of the token being checked.
+     * @param checkType The type of check being performed (e.g., "isSupported", "testCompatibility").
+     * @param reason The reason for the failure (e.g., revert data).
+     */
+    event TokenCheckFailed(
+        address indexed token,
+        string checkType,
+        bytes reason
+    );
+    /**
+     * @notice Emitted when the maximum platform fee is updated.
+     * @param oldMaxFeeBps The previous maximum fee in basis points.
+     * @param newMaxFeeBps The new maximum fee in basis points.
+     */
+    event MaxFeeBpsUpdated(
+        uint16 indexed oldMaxFeeBps,
+        uint16 indexed newMaxFeeBps
+    );
+    /**
+     * @notice Emitted when the maximum number of tokens in a single sweep is updated.
+     * @param oldMax The previous maximum number.
+     * @param newMax The new maximum number.
+     */
+    event MaxSweepTokensUpdated(uint8 indexed oldMax, uint8 indexed newMax);
+    /**
+     * @notice Emitted when the maximum number of batches in a single withdrawal is updated.
+     * @param oldMax The previous maximum number.
+     * @param newMax The new maximum number.
+     */
+    event MaxBatchesUpdated(uint8 indexed oldMax, uint8 indexed newMax);
+    /**
+     * @notice Emitted when the maximum number of factories per withdrawal is updated.
+     * @param oldMax The previous maximum number.
+     * @param newMax The new maximum number.
+     */
+    event MaxFactoriesPerWithdrawalUpdated(
+        uint8 indexed oldMax,
+        uint8 indexed newMax
+    );
+    /**
+     * @notice Emitted when the global withdrawal cooldown is updated.
+     * @param oldCooldown The previous cooldown in seconds.
+     * @param newCooldown The new cooldown in seconds.
+     */
+    event GlobalWithdrawalCooldownUpdated(
+        uint256 indexed oldCooldown,
+        uint256 indexed newCooldown
+    );
+    /**
+     * @notice Emitted when the L2 sequencer uptime feed address is updated.
+     * @param oldFeed The previous feed address.
+     * @param newFeed The new feed address.
+     */
+    event SequencerUptimeFeedUpdated(
+        address indexed oldFeed,
+        address indexed newFeed
+    );
+
     // ----------- Constants ----------- //
     /// @notice Maximum basis points, used for percentage calculations (100%).
     uint16 public constant MAX_BPS = 10_000;
@@ -260,6 +324,12 @@ contract RewardPool is
     uint16 public constant ABSOLUTE_MAX_FEE_BPS = 5_000;
     /// @notice Absolute maximum number of tokens that can be swept in a single transaction.
     uint8 public constant ABSOLUTE_MAX_SWEEP_TOKENS = 100;
+    /// @notice Absolute maximum number of batches in a single withdrawal.
+    uint8 public constant ABSOLUTE_MAX_BATCHES = 50;
+    /// @notice Absolute maximum number of factories in a single withdrawal.
+    uint8 public constant ABSOLUTE_MAX_FACTORIES_PER_WITHDRAWAL = 100;
+    /// @notice Maximum array length for view functions.
+    uint16 public constant MAX_VIEW_ARRAY_LENGTH = 200;
     /// @notice Sentinel value representing native ETH in the contract.
     address public constant NATIVE_TOKEN = address(0);
 
@@ -273,14 +343,21 @@ contract RewardPool is
         uint256 withdrawalCooldown; // default minimum delay between withdrawals
         uint16 maxFeeBps; // Safety cap for feeBps
         uint8 maxSweepTokens; // Max tokens in a single sweepFees call
+        uint8 maxBatches; // Max batches in a single withdrawBatch call
+        uint8 maxFactoriesPerWithdrawal; // Max factories per withdrawal
         address sequencerUptimeFeed; // L2 sequencer health feed
     }
 
     /// @notice Stores the current configuration of the reward pool.
     PoolConfig public config;
 
-    // ----------- L2 Health Check Modifier ----------- //
-    modifier whenSequencerUp() {
+    // ----------- L2 Health Check ----------- //
+    /**
+     * @notice Checks if the L2 sequencer is operational by querying the Chainlink feed.
+     * @dev Reverts with `SequencerDown` if the sequencer is down, or `SequencerFeedUnavailable`
+     *      if the feed cannot be reached. Skips the check if no feed is configured.
+     */
+    function _checkSequencerStatus() private view {
         // Fetches the latest sequencer health status from the Chainlink feed.
         // The feed returns 0 for a healthy sequencer and 1 for a down sequencer.
         // See: https://docs.chain.link/data-feeds/l2-sequencer-feeds
@@ -288,7 +365,6 @@ contract RewardPool is
         if (feed == address(0)) {
             // If no feed is configured, the check is skipped.
             // This allows deployment on networks without a feed (e.g., local testnets).
-            _;
             return;
         }
 
@@ -302,10 +378,9 @@ contract RewardPool is
             if (answer != 0) revert SequencerDown();
         } catch {
             // If the feed itself is unavailable, we cannot be sure of the sequencer's status.
-            // For maximum security, we assume it might be down.
-            revert SequencerDown();
+            // Revert with a specific error to distinguish from actual sequencer downtime.
+            revert SequencerFeedUnavailable();
         }
-        _;
     }
 
     // ----------- Security Features ----------- //
@@ -374,11 +449,19 @@ contract RewardPool is
             withdrawalCooldown: 60, // 60 seconds by default
             maxFeeBps: initialMaxFee,
             maxSweepTokens: 50,
+            maxBatches: 20,
+            maxFactoriesPerWithdrawal: 50,
             sequencerUptimeFeed: sequencerFeed_
         });
 
         emit TreasuryUpdated(address(0), treasury_);
         emit FeeUpdated(0, feeBps_);
+        emit GlobalWithdrawalCooldownUpdated(0, 60);
+        emit MaxFeeBpsUpdated(0, initialMaxFee);
+        emit MaxSweepTokensUpdated(0, 50);
+        emit MaxBatchesUpdated(0, 20);
+        emit MaxFactoriesPerWithdrawalUpdated(0, 50);
+        emit SequencerUptimeFeedUpdated(address(0), sequencerFeed_);
     }
 
     // ----------- Admin (Treasury & Fees) ----------- //
@@ -388,7 +471,8 @@ contract RewardPool is
      */
     function setTreasury(
         address newTreasury
-    ) external onlyRole(TREASURER_ROLE) whenSequencerUp {
+    ) external onlyRole(TREASURER_ROLE) {
+        _checkSequencerStatus();
         if (newTreasury == address(0)) revert TreasuryCannotBeZeroAddress();
         address old = config.treasury;
         config.treasury = newTreasury;
@@ -399,9 +483,8 @@ contract RewardPool is
      * @notice Sets the platform fee in basis points.
      * @param newFeeBps The new fee in basis points (e.g., 100 = 1%).
      */
-    function setFeeBps(
-        uint16 newFeeBps
-    ) external onlyRole(TREASURER_ROLE) whenSequencerUp {
+    function setFeeBps(uint16 newFeeBps) external onlyRole(TREASURER_ROLE) {
+        _checkSequencerStatus();
         if (newFeeBps > config.maxFeeBps) revert FeeExceedsMaxFee();
         uint16 old = config.feeBps;
         config.feeBps = newFeeBps;
@@ -414,9 +497,12 @@ contract RewardPool is
      */
     function setMaxFeeBps(
         uint16 newMaxFeeBps
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
         if (newMaxFeeBps > ABSOLUTE_MAX_FEE_BPS) revert FeeExceedsMaxFee();
+        uint16 oldMaxFeeBps = config.maxFeeBps;
         config.maxFeeBps = newMaxFeeBps;
+        emit MaxFeeBpsUpdated(oldMaxFeeBps, newMaxFeeBps);
     }
 
     /**
@@ -425,12 +511,64 @@ contract RewardPool is
      */
     function setMaxSweepTokens(
         uint8 newMaxSweepTokens
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
         if (
             newMaxSweepTokens > ABSOLUTE_MAX_SWEEP_TOKENS ||
             newMaxSweepTokens == 0
         ) revert TooManyTokensInSweep();
+        uint8 oldMax = config.maxSweepTokens;
         config.maxSweepTokens = newMaxSweepTokens;
+        emit MaxSweepTokensUpdated(oldMax, newMaxSweepTokens);
+    }
+
+    /**
+     * @notice Sets the maximum number of batches in a single `withdrawBatch` call.
+     * @param newMaxBatches The new maximum number of batches.
+     */
+    function setMaxBatches(
+        uint8 newMaxBatches
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
+        if (newMaxBatches > ABSOLUTE_MAX_BATCHES || newMaxBatches == 0) {
+            revert TooManyBatches();
+        }
+        uint8 oldMax = config.maxBatches;
+        config.maxBatches = newMaxBatches;
+        emit MaxBatchesUpdated(oldMax, newMaxBatches);
+    }
+
+    /**
+     * @notice Sets the maximum number of factories per withdrawal.
+     * @param newMaxFactories The new maximum number of factories.
+     */
+    function setMaxFactoriesPerWithdrawal(
+        uint8 newMaxFactories
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
+        if (
+            newMaxFactories > ABSOLUTE_MAX_FACTORIES_PER_WITHDRAWAL ||
+            newMaxFactories == 0
+        ) {
+            revert TooManyFactories();
+        }
+        uint8 oldMax = config.maxFactoriesPerWithdrawal;
+        config.maxFactoriesPerWithdrawal = newMaxFactories;
+        emit MaxFactoriesPerWithdrawalUpdated(oldMax, newMaxFactories);
+    }
+
+    /**
+     * @notice Sets the L2 sequencer uptime feed address. Must not be the zero address.
+     * @param newFeed The address of the new feed contract.
+     */
+    function setSequencerUptimeFeed(
+        address newFeed
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newFeed == address(0)) revert FeedCannotBeZeroAddress();
+        _checkSequencerStatus(); // Check with the old feed before updating
+        address oldFeed = config.sequencerUptimeFeed;
+        config.sequencerUptimeFeed = newFeed;
+        emit SequencerUptimeFeedUpdated(oldFeed, newFeed);
     }
 
     /// @notice Allows the treasury to sweep accumulated fees for multiple tokens.
@@ -440,7 +578,8 @@ contract RewardPool is
     /// @param tokensToSweep An array of token addresses for which to sweep the fees. Must not exceed config.maxSweepTokens.
     function sweepFees(
         address[] calldata tokensToSweep
-    ) external onlyRole(TREASURER_ROLE) whenSequencerUp {
+    ) external nonReentrant onlyRole(TREASURER_ROLE) {
+        _checkSequencerStatus();
         if (tokensToSweep.length > config.maxSweepTokens) {
             revert TooManyTokensInSweep();
         }
@@ -458,19 +597,9 @@ contract RewardPool is
             pendingFees[token] = 0;
 
             if (token == NATIVE_TOKEN) {
-                // Use .call to send ETH without reverting the entire transaction if it fails.
-                (bool success, ) = config.treasury.call{value: amount}("");
-                if (success) {
-                    emit FeeSwept(token, config.treasury, amount);
-                } else {
-                    // If the transfer fails, restore the pending amount so it can be tried again.
-                    pendingFees[token] = amount;
-                    emit FeeSweepFailed(token, config.treasury, amount);
-                }
+                _sweepNativeFee(amount);
             } else {
-                // For ERC20s, safeTransfer will handle success/failure (by reverting).
-                IERC20(token).safeTransfer(config.treasury, amount);
-                emit FeeSwept(token, config.treasury, amount);
+                _sweepERC20Fee(token, amount);
             }
         }
     }
@@ -479,8 +608,11 @@ contract RewardPool is
     /// @param newCooldown New cooldown period in seconds
     function setWithdrawalCooldown(
         uint256 newCooldown
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
+        uint256 oldCooldown = config.withdrawalCooldown;
         config.withdrawalCooldown = newCooldown;
+        emit GlobalWithdrawalCooldownUpdated(oldCooldown, newCooldown);
     }
 
     /// @notice Set cooldown period for a specific token
@@ -489,7 +621,8 @@ contract RewardPool is
     function setTokenCooldown(
         address token,
         uint256 cooldownSeconds
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
         uint256 oldCooldown = tokenSpecificCooldown[token];
         tokenSpecificCooldown[token] = cooldownSeconds;
         emit TokenCooldownUpdated(token, oldCooldown, cooldownSeconds);
@@ -506,7 +639,8 @@ contract RewardPool is
         address token,
         address to,
         uint256 amount
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkSequencerStatus();
         // Disallow recovering the native token or sending to the zero address.
         if (token == NATIVE_TOKEN) revert TokenCannotBeZeroAddress();
         if (to == address(0)) revert ReceiverCannotBeZeroAddress();
@@ -531,13 +665,15 @@ contract RewardPool is
     /**
      * @notice Pauses the contract, preventing key actions like funding and withdrawals.
      */
-    function pause() external onlyRole(PAUSER_ROLE) whenSequencerUp {
+    function pause() external onlyRole(PAUSER_ROLE) {
+        _checkSequencerStatus();
         _pause();
     }
     /**
      * @notice Unpauses the contract, resuming normal operations.
      */
-    function unpause() external onlyRole(PAUSER_ROLE) whenSequencerUp {
+    function unpause() external onlyRole(PAUSER_ROLE) {
+        _checkSequencerStatus();
         _unpause();
     }
 
@@ -551,7 +687,8 @@ contract RewardPool is
     function fundFactory(
         address token,
         uint256 amount
-    ) external whenNotPaused onlyRole(FACTORY_ROLE) whenSequencerUp {
+    ) external whenNotPaused onlyRole(FACTORY_ROLE) {
+        _checkSequencerStatus();
         if (token == address(0)) revert TokenCannotBeZeroAddress();
         if (amount == 0) return; // no-op
 
@@ -584,8 +721,8 @@ contract RewardPool is
         payable
         whenNotPaused
         onlyRole(FACTORY_ROLE)
-        whenSequencerUp
     {
+        _checkSequencerStatus();
         if (msg.value == 0) return;
         factoryFunding[msg.sender][NATIVE_TOKEN] += msg.value;
         emit FactoryFunded(msg.sender, NATIVE_TOKEN, msg.value, msg.value);
@@ -599,7 +736,8 @@ contract RewardPool is
     function refundFactory(
         address token,
         uint256 amount
-    ) external whenNotPaused onlyRole(FACTORY_ROLE) whenSequencerUp {
+    ) external nonReentrant whenNotPaused onlyRole(FACTORY_ROLE) {
+        _checkSequencerStatus();
         if (token == address(0)) revert TokenCannotBeZeroAddress();
         mapping(address => uint256) storage fundingByToken = factoryFunding[
             msg.sender
@@ -619,7 +757,8 @@ contract RewardPool is
      */
     function refundFactoryNative(
         uint256 amount
-    ) external whenNotPaused onlyRole(FACTORY_ROLE) whenSequencerUp {
+    ) external nonReentrant whenNotPaused onlyRole(FACTORY_ROLE) {
+        _checkSequencerStatus();
         mapping(address => uint256) storage fundingByToken = factoryFunding[
             msg.sender
         ];
@@ -643,7 +782,8 @@ contract RewardPool is
         address token,
         uint256 amount,
         bytes32 taskId
-    ) external whenNotPaused onlyRole(FACTORY_ROLE) whenSequencerUp {
+    ) external whenNotPaused onlyRole(FACTORY_ROLE) {
+        _checkSequencerStatus();
         if (farmer == address(0)) revert FarmerCannotBeZeroAddress();
         if (taskId == bytes32(0)) revert InvalidTaskId();
         if (amount == 0) return; // no-op
@@ -669,13 +809,7 @@ contract RewardPool is
         accrued[accruedKey] += amount;
         totalOwedByToken[farmer][token] += amount;
 
-        emit TaskValidated(
-            taskId,
-            farmer,
-            msg.sender,
-            block.number,
-            blockhash(block.number - 1)
-        );
+        emit TaskValidated(taskId, farmer, msg.sender, block.number);
         emit TaskCompleted(
             taskId,
             farmer,
@@ -702,7 +836,19 @@ contract RewardPool is
         address token,
         address[] calldata factories,
         uint256 expectedNonce
-    ) external nonReentrant whenNotPaused whenSequencerUp {
+    ) external nonReentrant whenNotPaused {
+        _checkSequencerStatus();
+        if (
+            factories.length == 0 ||
+            factories.length > config.maxFactoriesPerWithdrawal
+        ) {
+            revert TooManyFactories();
+        }
+
+        for (uint256 i = 0; i < factories.length; ++i) {
+            if (factories[i] == address(0)) revert FactoryCannotBeZeroAddress();
+        }
+
         address farmer = msg.sender;
 
         // Verify nonce to prevent replay attacks
@@ -722,10 +868,12 @@ contract RewardPool is
         farmerNonce[farmer] = oldNonce + 1;
         lastWithdrawalTime[farmer][token] = block.timestamp;
 
-        emit WithdrawalNonceIncremented(farmer, oldNonce, oldNonce + 1);
-
-        // Perform withdrawal logic
+        // Perform withdrawal logic. State changes and events happen within this function.
         _executeWithdrawal(token, factories, farmer);
+
+        // Emit nonce event after all state changes for this logical action are complete.
+        // This ensures off-chain observers see a consistent state.
+        emit WithdrawalNonceIncremented(farmer, oldNonce, oldNonce + 1);
     }
 
     /// @notice Secure batch withdraw with global nonce protection and rate limiting
@@ -735,7 +883,11 @@ contract RewardPool is
     function withdrawBatch(
         TokenFactoryBatch[] calldata batches,
         uint256 expectedNonce
-    ) external nonReentrant whenNotPaused whenSequencerUp {
+    ) external nonReentrant whenNotPaused {
+        _checkSequencerStatus();
+        if (batches.length == 0 || batches.length > config.maxBatches) {
+            revert TooManyBatches();
+        }
         address farmer = msg.sender;
 
         // Verify global nonce
@@ -743,7 +895,19 @@ contract RewardPool is
 
         // Pre-check rate limiting for all tokens in the batch
         for (uint256 i = 0; i < batches.length; ++i) {
+            if (
+                batches[i].factories.length == 0 ||
+                batches[i].factories.length > config.maxFactoriesPerWithdrawal
+            ) {
+                revert TooManyFactories();
+            }
+            for (uint256 j = 0; j < batches[i].factories.length; ++j) {
+                if (batches[i].factories[j] == address(0)) {
+                    revert FactoryCannotBeZeroAddress();
+                }
+            }
             uint256 effectiveCooldown = getEffectiveCooldown(batches[i].token);
+            // solhint-disable-next-line gas-strict-inequalities
             if (
                 block.timestamp <
                 lastWithdrawalTime[farmer][batches[i].token] + effectiveCooldown
@@ -756,8 +920,6 @@ contract RewardPool is
         uint256 oldNonce = farmerNonce[farmer];
         farmerNonce[farmer] = oldNonce + 1;
 
-        emit WithdrawalNonceIncremented(farmer, oldNonce, oldNonce + 1);
-
         // Effects: Update all timestamps before any external calls to follow
         // the Checks-Effects-Interactions pattern and mitigate potential reentrancy-related race conditions.
         for (uint256 i = 0; i < batches.length; ++i) {
@@ -768,6 +930,9 @@ contract RewardPool is
         for (uint256 i = 0; i < batches.length; ++i) {
             _executeWithdrawal(batches[i].token, batches[i].factories, farmer);
         }
+
+        // Emit nonce event after all state changes for this logical action are complete.
+        emit WithdrawalNonceIncremented(farmer, oldNonce, oldNonce + 1);
     }
 
     /**
@@ -824,6 +989,7 @@ contract RewardPool is
         address factory,
         address token
     ) external view returns (uint256) {
+        if (factory == address(0)) revert FactoryCannotBeZeroAddress();
         bytes32 accruedKey = _getAccruedKey(farmer, factory, token);
         return accrued[accruedKey];
     }
@@ -853,6 +1019,7 @@ contract RewardPool is
         uint256 last = lastWithdrawalTime[farmer][token];
         uint256 eff = getEffectiveCooldown(token);
         nextWithdrawalTime = last + eff;
+        // solhint-disable-next-line gas-strict-inequalities
         canWithdrawNow = block.timestamp >= nextWithdrawalTime;
     }
 
@@ -878,6 +1045,7 @@ contract RewardPool is
         uint256 effectiveCooldown = getEffectiveCooldown(token);
         uint256 nextAllowedTime = lastWithdrawTime + effectiveCooldown;
 
+        // solhint-disable-next-line gas-strict-inequalities
         if (block.timestamp >= nextAllowedTime) {
             canWithdrawNow = true;
             remainingCooldown = 0;
@@ -895,12 +1063,16 @@ contract RewardPool is
         address farmer,
         address[] calldata tokens
     ) external view returns (bool[] memory eligibility) {
+        if (tokens.length > MAX_VIEW_ARRAY_LENGTH || tokens.length == 0) {
+            revert ArrayTooLong();
+        }
         eligibility = new bool[](tokens.length);
         uint256 currentTime = block.timestamp;
 
         for (uint256 i = 0; i < tokens.length; ++i) {
             uint256 effectiveCooldown = getEffectiveCooldown(tokens[i]);
             eligibility[i] =
+                // solhint-disable-next-line gas-strict-inequalities
                 currentTime >=
                 lastWithdrawalTime[farmer][tokens[i]] + effectiveCooldown;
         }
@@ -926,10 +1098,13 @@ contract RewardPool is
      * @param token The address of the token to check.
      * @return A boolean indicating if the token is supported.
      */
-    function isTokenSupported(address token) external view returns (bool) {
+    function isTokenSupported(address token) external returns (bool) {
         if (token == address(0)) return true; // Native is always supported
 
-        // Must be a contract
+        // Must be a contract.
+        // NOTE: extcodesize check can be bypassed by contracts during construction.
+        // This is acceptable here as this is a non-critical helper function.
+        // Core fund-handling functions are protected by SafeERC20 calls.
         uint256 size;
         assembly {
             size := extcodesize(token)
@@ -937,10 +1112,16 @@ contract RewardPool is
         if (size == 0) return false;
 
         // Basic ERC20 `view` methods should not revert (balanceOf/totalSupply are required in ERC-20)
-        try IERC20(token).totalSupply() returns (uint256) {} catch {
+        try IERC20(token).totalSupply() returns (uint256) {
+            /* solhint-disable-next-line no-empty-blocks */
+        } catch (bytes memory reason) {
+            emit TokenCheckFailed(token, "isSupported-totalSupply", reason);
             return false;
         }
-        try IERC20(token).balanceOf(address(this)) returns (uint256) {} catch {
+        try IERC20(token).balanceOf(address(this)) returns (uint256) {
+            /* solhint-disable-next-line no-empty-blocks */
+        } catch (bytes memory reason) {
+            emit TokenCheckFailed(token, "isSupported-balanceOf", reason);
             return false;
         }
 
@@ -965,16 +1146,28 @@ contract RewardPool is
         try
             IERC20(token).transferFrom(msg.sender, address(this), testAmount)
         returns (bool success) {
-            if (!success) return (false, 0);
+            if (!success) {
+                emit TokenCheckFailed(
+                    token,
+                    "testCompatibility-transferFrom",
+                    "returned false"
+                );
+                return (false, 0);
+            }
 
             uint256 balanceAfter = IERC20(token).balanceOf(address(this));
             uint256 actualReceived = balanceAfter - balanceBefore;
 
             // Return tokens to sender
-            IERC20(token).transfer(msg.sender, actualReceived);
+            IERC20(token).safeTransfer(msg.sender, actualReceived);
 
             return (true, actualReceived);
-        } catch {
+        } catch (bytes memory reason) {
+            emit TokenCheckFailed(
+                token,
+                "testCompatibility-transferFrom",
+                reason
+            );
             return (false, 0);
         }
     }
@@ -1053,17 +1246,19 @@ contract RewardPool is
         fee = (gross * config.feeBps + MAX_BPS - 1) / MAX_BPS;
         net = gross - fee;
 
-        if (token == NATIVE_TOKEN) {
-            // send ETH
-            Address.sendValue(payable(farmer), net);
-            if (fee != 0) {
-                pendingFees[NATIVE_TOKEN] += fee;
-            }
-        } else {
-            // send ERC20
-            IERC20(token).safeTransfer(farmer, net);
-            if (fee != 0) {
-                pendingFees[token] += fee;
+        // --- CEI Pattern: Effects before Interactions ---
+        if (fee != 0) {
+            pendingFees[token] += fee;
+        }
+
+        // --- Interactions ---
+        if (net > 0) {
+            if (token == NATIVE_TOKEN) {
+                // send ETH
+                Address.sendValue(payable(farmer), net);
+            } else {
+                // send ERC20
+                IERC20(token).safeTransfer(farmer, net);
             }
         }
     }
@@ -1081,6 +1276,56 @@ contract RewardPool is
         address token
     ) private pure returns (bytes32) {
         return keccak256(abi.encodePacked(farmer, factory, token));
+    }
+
+    // --- Fee Sweep Helpers ---
+
+    /**
+     * @notice Sweeps pending native ETH fees to the treasury.
+     * @param amount The amount of native ETH to sweep.
+     */
+    function _sweepNativeFee(uint256 amount) private {
+        // Use .call to send ETH without reverting the entire transaction if it fails.
+        (bool success, ) = config.treasury.call{value: amount}("");
+        if (success) {
+            emit FeeSwept(NATIVE_TOKEN, config.treasury, amount);
+        } else {
+            // If the transfer fails, restore the pending amount so it can be tried again.
+            // This is safe from reentrancy due to the nonReentrant guard on the public calling function.
+            pendingFees[NATIVE_TOKEN] = amount;
+            emit FeeSweepFailed(NATIVE_TOKEN, config.treasury, amount);
+        }
+    }
+
+    /**
+     * @notice Sweeps pending ERC20 fees to the treasury.
+     * @param token The address of the ERC20 token to sweep.
+     * @param amount The amount of the token to sweep.
+     */
+    function _sweepERC20Fee(address token, uint256 amount) private {
+        // For ERC20s, use a low-level call to prevent a single failing
+        // token from reverting the entire batch sweep (DoS vector).
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool success, bytes memory returnData) = token.call(
+            abi.encodeWithSelector(
+                IERC20.transfer.selector,
+                config.treasury,
+                amount
+            )
+        );
+        // Replicate SafeERC20's check for success and true return value
+        if (
+            success &&
+            (returnData.length == 0 || abi.decode(returnData, (bool)))
+        ) {
+            emit FeeSwept(token, config.treasury, amount);
+        } else {
+            // If the transfer fails, restore the pending amount so it can be tried again.
+            // This is safe from reentrancy due to the nonReentrant guard on the public calling function.
+            // solhint-disable-next-line reentrancy
+            pendingFees[token] = amount;
+            emit FeeSweepFailed(token, config.treasury, amount);
+        }
     }
 }
 
