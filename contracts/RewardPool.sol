@@ -80,6 +80,7 @@ contract RewardPool is
     error FarmerCannotBeZeroAddress();
     error ReceiverCannotBeZeroAddress();
     error FeeExceedsMaxFee();
+    error InvalidNewImplementation();
 
     // ----------- Events ----------- //
     /**
@@ -987,8 +988,8 @@ contract RewardPool is
      */
     function _authorizeUpgrade(
         address newImplementation
-    ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (newImplementation == address(0)) revert InvalidAddress();
+    ) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newImplementation == address(0)) revert InvalidNewImplementation();
         // Intentionally left blank to allow admin control.
     }
 
