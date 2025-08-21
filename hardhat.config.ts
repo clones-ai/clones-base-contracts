@@ -41,7 +41,6 @@ const config: HardhatUserConfig = {
         }
     },
 
-    // Hardhat Verify (v2) with Basescan's Etherscan-compatible API endpoints
     etherscan: {
         apiKey: {
             base: BASESCAN_KEY,
@@ -70,6 +69,10 @@ const config: HardhatUserConfig = {
     typechain: {
         outDir: "typechain-types",
         target: "ethers-v6",
+    },
+
+    sourcify: {
+        enabled: true
     },
 
     gasReporter: {

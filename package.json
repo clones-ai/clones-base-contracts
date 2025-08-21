@@ -12,6 +12,8 @@
         "lint:sol": "solhint 'contracts/**/*.sol'",
         "deploy:base": "hardhat run scripts/deploy.ts --network base",
         "deploy:baseSepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
+        "deploy:upgradeable:base": "hardhat run scripts/deploy-upgradeable.ts --network base",
+        "deploy:upgradeable:baseSepolia": "hardhat run scripts/deploy-upgradeable.ts --network baseSepolia",
         "verify": "ts-node scripts/verify.ts",
         "verify:base": "ts-node scripts/verify.ts --network base",
         "verify:baseSepolia": "ts-node scripts/verify.ts --network baseSepolia",

@@ -62,39 +62,82 @@ Run the full test suite for all contracts:
 npx hardhat test
 ```
 
-### Deployment Guide (Example: RewardPool on Base Sepolia)
+### Available Commands
+
+The project includes several npm scripts for common operations:
+
+#### **Deployment Commands:**
+- `npm run deploy:baseSepolia` - Deploy standard contracts to Base Sepolia testnet
+- `npm run deploy:base` - Deploy standard contracts to Base mainnet
+- `npm run deploy:upgradeable:baseSepolia` - Deploy upgradeable contracts to Base Sepolia testnet
+- `npm run deploy:upgradeable:base` - Deploy upgradeable contracts to Base mainnet
+
+#### **Other Commands:**
+- `npm run build` - Compile contracts
+- `npm run test` - Run tests
+- `npm run coverage` - Generate test coverage report
+- `npm run lint:sol` - Lint Solidity code
+
+### Deployment Guide
 
 The deployment process is managed via scripts in the `scripts/` directory and is designed to be generic.
 
-**To deploy a contract, you will need to edit the `scripts/deploy.ts` file to specify which contract you are deploying and its constructor arguments.**
+**You can deploy contracts using environment variables without modifying the deployment scripts.**
 
-Here is an example workflow for deploying the `RewardPool` contract to the Base Sepolia testnet:
+#### **Standard Contracts vs Upgradeable Contracts**
 
-1. **Configure `scripts/deploy.ts`:**
-   Modify the script to target the `RewardPool` contract and provide its `initialize` arguments. For example:
-   ```typescript
-   // In scripts/deploy.ts
-   const contractName = "RewardPool";
-   const contractArgs = [
-       "0xADMIN_ADDRESS",      // admin
-       "0xTREASURY_ADDRESS",   // treasury
-       1000,                   // feeBps (e.g., 10%)
-       "0xBASE_SEPOLIA_SEQUENCER_FEED" // sequencerUptimeFeed
-   ];
+This project supports two types of contracts:
+
+1. **Standard Contracts** - Use `scripts/deploy.ts`
+2. **Upgradeable Contracts** (like `RewardPool`) - Use `scripts/deploy-upgradeable.ts`
+
+#### **Example: Deploying RewardPool (Upgradeable Contract) on Base Sepolia**
+
+The `RewardPool` contract is an upgradeable contract that uses the UUPS pattern. Here's how to deploy it:
+
+1. **Configure Environment Variables:**
+   Set the following environment variables in your `.env` file or export them in your terminal:
+   ```bash
+   export CONTRACT_NAME="RewardPool"
+   export CONTRACT_ARGS='["0xADMIN_ADDRESS", "0xTREASURY_ADDRESS", 1000, "0xBASE_SEPOLIA_SEQUENCER_FEED"]'
+   export CONTRACT_SAVE_AS="RewardPool"  # Optional: custom name for registry
+   ```
+   
+   Or add them to your `.env` file:
+   ```env
+   CONTRACT_NAME=RewardPool
+   CONTRACT_ARGS=["0xADMIN_ADDRESS", "0xTREASURY_ADDRESS", 1000, "0xBASE_SEPOLIA_SEQUENCER_FEED"]
+   CONTRACT_SAVE_AS=RewardPool
    ```
 
 2. **Run the Deployment:**
-   Execute the deployment script, targeting the `baseSepolia` network:
+   **For upgradeable contracts like RewardPool, use:**
    ```bash
-   npx hardhat run scripts/deploy.ts --network baseSepolia
+   npm run deploy:upgradeable:baseSepolia
    ```
-   The script will deploy the contract and log its address to the console.
+   
+   **For standard contracts, use:**
+   ```bash
+   npm run deploy:baseSepolia
+   ```
+   
+   The script will deploy the contract and log both the proxy and implementation addresses to the console.
 
 3. **Verify on Basescan:**
-   Use the `verify` task with the address output from the previous step. The verification process for UUPS proxies is handled by the `@openzeppelin/hardhat-upgrades` plugin.
+   **For upgradeable contracts (like RewardPool):**
+   - Verify the **implementation address** (not the proxy address)
+   - The implementation address is logged during deployment
    ```bash
-   npx hardhat verify --network baseSepolia <DEPLOYED_PROXY_ADDRESS>
+   npx hardhat verify --network baseSepolia <IMPLEMENTATION_ADDRESS>
    ```
+   
+   **For standard contracts:**
+   - Verify the deployed contract address directly
+   ```bash
+   npx hardhat verify --network baseSepolia <DEPLOYED_CONTRACT_ADDRESS>
+   ```
+   
+   The verification process for UUPS proxies is handled by the `@openzeppelin/hardhat-upgrades` plugin.
 
 4. **Post-Deployment:**
    After deployment, use a tool like Etherscan or a custom script to perform necessary post-deployment actions, such as granting roles (`grantRole`) to the appropriate addresses.
