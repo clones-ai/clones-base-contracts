@@ -590,7 +590,6 @@ contract RewardPool is
         emit FactoryFunded(msg.sender, NATIVE_TOKEN, msg.value, msg.value);
     }
 
-    /// @notice Factory can refund unused ERC20 funding (i.e., tokens not yet allocated to farmers).
     /**
      * @notice Factory can refund unused ERC20 funding (i.e., tokens not yet allocated to farmers).
      * @param token The address of the ERC20 token to refund.
@@ -613,7 +612,6 @@ contract RewardPool is
         emit FactoryRefunded(msg.sender, token, amount);
     }
 
-    /// @notice Factory can refund unused native ETH funding.
     /**
      * @notice Factory can refund unused native ETH funding.
      * @param amount The amount of native ETH to refund.
@@ -771,7 +769,6 @@ contract RewardPool is
         }
     }
 
-    /// @notice Internal withdrawal logic (shared between regular and batch withdrawals)
     /**
      * @notice Internal withdrawal logic (shared between regular and batch withdrawals).
      * @param token The token to be withdrawn.
@@ -1076,7 +1073,6 @@ contract RewardPool is
 
     /**
      * @notice Computes the storage key for the `accrued` mapping.
-     * @dev Computes the storage key for the `accrued` mapping.
      * @param farmer The farmer's address.
      * @param factory The factory's address.
      * @param token The token's address.
