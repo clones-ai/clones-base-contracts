@@ -4,6 +4,7 @@ import { HardhatUserConfig } from "hardhat/config";
 // Core plugins (Hardhat 2.x)
 import "@nomicfoundation/hardhat-ethers";   // Ethers v6 adapter
 import "@nomicfoundation/hardhat-verify";   // Verify v2 (Etherscan-compatible)
+import "@nomicfoundation/hardhat-chai-matchers";
 import "hardhat-gas-reporter";
 import "@openzeppelin/hardhat-upgrades";
 import "@typechain/hardhat";

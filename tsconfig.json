@@ -11,7 +11,8 @@
             "chai",
             "mocha",
             "node",
-            "@nomicfoundation/hardhat-ethers"
+            "@nomicfoundation/hardhat-ethers",
+            "@nomicfoundation/hardhat-chai-matchers"
         ],
         "resolveJsonModule": true,
         "outDir": "dist"
