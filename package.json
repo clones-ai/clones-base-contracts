@@ -29,7 +29,7 @@
         "chai": "^4.4.1",
         "hardhat": "^2.26.0",
         "hardhat-gas-reporter": "^2.2.0",
-        "solhint": "^4.5.3",
+        "solhint": "^6.0.0",
         "solhint-plugin-prettier": "^0.1.0",
         "ts-node": "^10.9.2",
         "typechain": "^8.3.2",
