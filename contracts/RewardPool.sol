@@ -936,14 +936,10 @@ contract RewardPool is
         if (size == 0) return false;
 
         // Basic ERC20 `view` methods should not revert (balanceOf/totalSupply are required in ERC-20)
-        try IERC20(token).totalSupply() returns (uint256) {
-            // Intentionally left blank.
-        } catch {
+        try IERC20(token).totalSupply() returns (uint256) {} catch {
             return false;
         }
-        try IERC20(token).balanceOf(address(this)) returns (uint256) {
-            // Intentionally left blank.
-        } catch {
+        try IERC20(token).balanceOf(address(this)) returns (uint256) {} catch {
             return false;
         }
 
@@ -992,6 +988,7 @@ contract RewardPool is
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newImplementation == address(0)) revert InvalidAddress();
         // Intentionally left blank to allow admin control.
     }
 
