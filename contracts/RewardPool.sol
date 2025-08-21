@@ -14,6 +14,7 @@ pragma solidity ^0.8.30;
  *         or other mechanisms that alter the actual amount received are NOT supported and
  *         may cause accounting inconsistencies.
  * @custom:security-contact security@clones.ai
+ * @author CLONES
  */
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -25,6 +26,20 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
+/**
+ * @title RewardPool (UUPS Upgradeable)
+ * @notice Centralized reward pool for multiple factories. Farmers withdraw their rewards and pay gas.
+ *         A platform fee is skimmed on each withdrawal and sent to the treasury. Supports multiple ERC20 tokens
+ *         and native ETH on Base.
+ * @dev    Designed for Base L2. Uses OZ v5.x upgradeable contracts.
+ *         Enhanced with Task ID system and Nonce-based withdrawals for maximum security.
+ *
+ *         IMPORTANT: This contract only supports standard ERC-20 tokens without transfer fees,
+ *         rebasing, or other non-standard behavior. Tokens with transfer taxes, rebasing,
+ *         or other mechanisms that alter the actual amount received are NOT supported and
+ *         may cause accounting inconsistencies.
+ * @custom:security-contact security@clones.ai
+ */
 contract RewardPool is
     Initializable,
     UUPSUpgradeable,
@@ -35,8 +50,11 @@ contract RewardPool is
     using SafeERC20 for IERC20;
 
     // ----------- Roles ----------- //
+    /// @notice Role for factories to fund the pool and record rewards.
     bytes32 public constant FACTORY_ROLE = keccak256("FACTORY_ROLE");
+    /// @notice Role for pausing/unpausing the contract in emergencies.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    /// @notice Role for managing treasury, fees, and sweeping funds.
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
 
     // ----------- Errors ----------- //
@@ -64,35 +82,78 @@ contract RewardPool is
     error FeeExceedsMaxFee();
 
     // ----------- Events ----------- //
+    /**
+     * @notice Emitted when the treasury address is updated.
+     * @param oldTreasury The previous treasury address.
+     * @param newTreasury The new treasury address.
+     */
     event TreasuryUpdated(
         address indexed oldTreasury,
         address indexed newTreasury
     );
-    event FeeUpdated(uint16 oldFeeBps, uint16 newFeeBps);
+    /**
+     * @notice Emitted when the platform fee is updated.
+     * @param oldFeeBps The previous fee in basis points.
+     * @param newFeeBps The new fee in basis points.
+     */
+    event FeeUpdated(uint16 indexed oldFeeBps, uint16 indexed newFeeBps);
 
+    /**
+     * @notice Emitted when fees for a specific token are successfully swept to the treasury.
+     * @param token The address of the token for which fees were swept.
+     * @param treasury The address of the treasury receiving the fees.
+     * @param amount The amount of fees swept.
+     */
     event FeeSwept(
         address indexed token,
         address indexed treasury,
-        uint256 amount
+        uint256 indexed amount
     );
+    /**
+     * @notice Emitted when a fee sweep for a specific token fails.
+     * @param token The address of the token for which the fee sweep failed.
+     * @param treasury The address of the treasury that was intended to receive the fees.
+     * @param amount The amount of fees that failed to be swept.
+     */
     event FeeSweepFailed(
         address indexed token,
         address indexed treasury,
-        uint256 amount
+        uint256 indexed amount
     );
 
+    /**
+     * @notice Emitted when a factory successfully funds the reward pool.
+     * @param factory The address of the factory providing the funds.
+     * @param token The address of the token being funded.
+     * @param amount The expected amount of tokens to be funded.
+     * @param actualAmountReceived The actual amount of tokens received after any potential transfer fees.
+     */
     event FactoryFunded(
         address indexed factory,
         address indexed token,
-        uint256 amount,
+        uint256 indexed amount,
         uint256 actualAmountReceived
     );
+    /**
+     * @notice Emitted when a factory refunds its unused funds from the pool.
+     * @param factory The address of the factory refunding the funds.
+     * @param token The address of the token being refunded.
+     * @param amount The amount of tokens refunded.
+     */
     event FactoryRefunded(
         address indexed factory,
         address indexed token,
-        uint256 amount
+        uint256 indexed amount
     );
 
+    /**
+     * @notice Emitted when a reward is recorded for a farmer by a factory.
+     * @param factory The address of the factory that recorded the reward.
+     * @param farmer The address of the farmer who earned the reward.
+     * @param token The address of the reward token.
+     * @param amount The amount of the reward.
+     * @param timestamp The timestamp when the reward was recorded.
+     */
     event RewardRecorded(
         address indexed factory,
         address indexed farmer,
@@ -101,6 +162,15 @@ contract RewardPool is
         uint256 timestamp
     );
 
+    /**
+     * @notice Emitted when a task is successfully completed and its reward recorded.
+     * @param taskId The unique identifier for the completed task.
+     * @param farmer The address of the farmer who completed the task.
+     * @param factory The address of the factory that assigned the task.
+     * @param token The address of the reward token.
+     * @param amount The reward amount.
+     * @param timestamp The timestamp of task completion.
+     */
     event TaskCompleted(
         bytes32 indexed taskId,
         address indexed farmer,
@@ -110,6 +180,14 @@ contract RewardPool is
         uint256 timestamp
     );
 
+    /**
+     * @notice Emitted when a task's completion is validated on-chain.
+     * @param taskId The unique identifier for the validated task.
+     * @param farmer The address of the farmer associated with the task.
+     * @param factory The address of the factory that validated the task.
+     * @param blockNumber The block number at which the validation occurred.
+     * @param blockHash The hash of the previous block, used for security.
+     */
     event TaskValidated(
         bytes32 indexed taskId,
         address indexed farmer,
@@ -118,42 +196,76 @@ contract RewardPool is
         bytes32 blockHash
     );
 
+    /**
+     * @notice Emitted when a farmer withdraws rewards.
+     * @param farmer The address of the farmer withdrawing rewards.
+     * @param token The address of the token being withdrawn (address(0) for native ETH).
+     * @param grossAmount The total amount of rewards withdrawn before fees.
+     * @param feeAmount The portion of the withdrawal taken as a platform fee.
+     * @param netAmount The net amount of rewards received by the farmer.
+     * @param factoryCount The number of factories from which rewards were withdrawn.
+     * @param timestamp The timestamp of the withdrawal.
+     */
     event RewardsWithdrawn(
         address indexed farmer,
-        address indexed token, // address(0) => native ETH
+        address indexed token,
         uint256 grossAmount,
         uint256 feeAmount,
         uint256 netAmount,
         uint256 factoryCount,
-        uint256 timestamp
+        uint256 indexed timestamp
     );
 
+    /**
+     * @notice Emitted when a farmer's withdrawal nonce is incremented.
+     * @param farmer The address of the farmer whose nonce was incremented.
+     * @param oldNonce The nonce before the increment.
+     * @param newNonce The nonce after the increment.
+     */
     event WithdrawalNonceIncremented(
         address indexed farmer,
-        uint256 oldNonce,
-        uint256 newNonce
+        uint256 indexed oldNonce,
+        uint256 indexed newNonce
     );
 
+    /**
+     * @notice Emitted when the withdrawal cooldown period for a token is updated.
+     * @param token The address of the token for which the cooldown was updated.
+     * @param oldCooldown The previous cooldown period in seconds.
+     * @param newCooldown The new cooldown period in seconds.
+     */
     event TokenCooldownUpdated(
         address indexed token,
-        uint256 oldCooldown,
-        uint256 newCooldown
+        uint256 indexed oldCooldown,
+        uint256 indexed newCooldown
     );
 
+    /**
+     * @notice Emitted when ERC-20 tokens are recovered from the contract by an admin.
+     * @param token The address of the recovered ERC-20 token.
+     * @param to The address to which the tokens were sent.
+     * @param amount The amount of tokens recovered.
+     */
     event TokensRecovered(
         address indexed token,
         address indexed to,
-        uint256 amount
+        uint256 indexed amount
     );
 
     // ----------- Constants ----------- //
-    uint16 public constant MAX_BPS = 10_000; // 100%
-    // Absolute maximums to protect against misconfiguration.
-    uint16 public constant ABSOLUTE_MAX_FEE_BPS = 5_000; // 50%
+    /// @notice Maximum basis points, used for percentage calculations (100%).
+    uint16 public constant MAX_BPS = 10_000;
+    /// @notice Absolute maximum fee that can be set, to prevent misconfiguration (50%).
+    uint16 public constant ABSOLUTE_MAX_FEE_BPS = 5_000;
+    /// @notice Absolute maximum number of tokens that can be swept in a single transaction.
     uint8 public constant ABSOLUTE_MAX_SWEEP_TOKENS = 100;
-    address public constant NATIVE_TOKEN = address(0); // sentinel for ETH
+    /// @notice Sentinel value representing native ETH in the contract.
+    address public constant NATIVE_TOKEN = address(0);
 
     // ----------- Config ----------- //
+    /**
+     * @notice Main configuration struct for the reward pool.
+     */
     struct PoolConfig {
         address treasury; // where fees are sent
         uint16 feeBps; // platform fee in basis points
@@ -163,6 +275,7 @@ contract RewardPool is
         address sequencerUptimeFeed; // L2 sequencer health feed
     }
 
+    /// @notice Stores the current configuration of the reward pool.
     PoolConfig public config;
 
     // ----------- L2 Health Check Modifier ----------- //
@@ -178,7 +291,7 @@ contract RewardPool is
             return;
         }
 
-        try AggregatorV3Interface(feed).latestRoundData() returns (
+        try IAggregatorV3Interface(feed).latestRoundData() returns (
             uint80, // roundId (ignored)
             int256 answer, // response: 0 = up, 1 = down
             uint256, // startedAt (ignored)
@@ -209,7 +322,7 @@ contract RewardPool is
     mapping(address token => uint256 cooldown) public tokenSpecificCooldown;
 
     // ----------- Accounting ----------- //
-    // Tokens deposited by each factory into the pool that are not yet allocated to farmers
+    /// @notice Tokens deposited by each factory into the pool that are not yet allocated to farmers
     mapping(address factory => mapping(address token => uint256 amount))
         public factoryFunding;
 
@@ -218,19 +331,21 @@ contract RewardPool is
     // to save gas on storage access compared to deeply nested mappings.
     mapping(bytes32 => uint256) internal accrued;
 
-    // Aggregated owed per farmer per token (gas-friendly for reads & accounting updates)
+    /// @notice Aggregated owed per farmer per token (gas-friendly for reads & accounting updates)
     mapping(address farmer => mapping(address token => uint256 amount))
         public totalOwedByToken;
 
-    // Fees accumulated per token to be swept by the treasury.
-    // This prevents withdrawals from reverting if the treasury is a contract that cannot receive ETH.
+    /// @notice Fees accumulated per token to be swept by the treasury.
     mapping(address token => uint256 amount) public pendingFees;
 
     // ----------- Initialization ----------- //
-    /// @param admin The address to receive DEFAULT_ADMIN/PAUSER/TREASURER by default (use a multisig Safe in prod)
-    /// @param treasury_ Initial treasury address
-    /// @param feeBps_   Initial fee in basis points (e.g., 1000 = 10%)
-    /// @param sequencerFeed_ Address of the L2 sequencer uptime feed (Chainlink). Use address(0) for local testing.
+    /**
+     * @notice Initializes the contract.
+     * @param admin The address to receive DEFAULT_ADMIN/PAUSER/TREASURER by default (use a multisig Safe in prod)
+     * @param treasury_ Initial treasury address
+     * @param feeBps_   Initial fee in basis points (e.g., 1000 = 10%)
+     * @param sequencerFeed_ Address of the L2 sequencer uptime feed (Chainlink). Use address(0) for local testing.
+     */
     function initialize(
         address admin,
         address treasury_,
@@ -266,6 +381,10 @@ contract RewardPool is
     }
 
     // ----------- Admin (Treasury & Fees) ----------- //
+    /**
+     * @notice Sets the treasury address where fees are collected.
+     * @param newTreasury The address of the new treasury.
+     */
     function setTreasury(
         address newTreasury
     ) external onlyRole(TREASURER_ROLE) whenSequencerUp {
@@ -275,6 +394,10 @@ contract RewardPool is
         emit TreasuryUpdated(old, newTreasury);
     }
 
+    /**
+     * @notice Sets the platform fee in basis points.
+     * @param newFeeBps The new fee in basis points (e.g., 100 = 1%).
+     */
     function setFeeBps(
         uint16 newFeeBps
     ) external onlyRole(TREASURER_ROLE) whenSequencerUp {
@@ -284,6 +407,10 @@ contract RewardPool is
         emit FeeUpdated(old, newFeeBps);
     }
 
+    /**
+     * @notice Sets the maximum platform fee that can be configured.
+     * @param newMaxFeeBps The new maximum fee in basis points.
+     */
     function setMaxFeeBps(
         uint16 newMaxFeeBps
     ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
@@ -291,6 +418,10 @@ contract RewardPool is
         config.maxFeeBps = newMaxFeeBps;
     }
 
+    /**
+     * @notice Sets the maximum number of tokens that can be swept in a single `sweepFees` call.
+     * @param newMaxSweepTokens The new maximum number of tokens.
+     */
     function setMaxSweepTokens(
         uint8 newMaxSweepTokens
     ) external onlyRole(DEFAULT_ADMIN_ROLE) whenSequencerUp {
@@ -314,7 +445,7 @@ contract RewardPool is
         }
         if (config.treasury == address(0)) revert TreasuryNotSet();
 
-        for (uint256 i = 0; i < tokensToSweep.length; i++) {
+        for (uint256 i = 0; i < tokensToSweep.length; ++i) {
             address token = tokensToSweep[i];
             uint256 amount = pendingFees[token];
 
@@ -396,9 +527,15 @@ contract RewardPool is
         }
     }
 
+    /**
+     * @notice Pauses the contract, preventing key actions like funding and withdrawals.
+     */
     function pause() external onlyRole(PAUSER_ROLE) whenSequencerUp {
         _pause();
     }
+    /**
+     * @notice Unpauses the contract, resuming normal operations.
+     */
     function unpause() external onlyRole(PAUSER_ROLE) whenSequencerUp {
         _unpause();
     }
@@ -454,6 +591,11 @@ contract RewardPool is
     }
 
     /// @notice Factory can refund unused ERC20 funding (i.e., tokens not yet allocated to farmers).
+    /**
+     * @notice Factory can refund unused ERC20 funding (i.e., tokens not yet allocated to farmers).
+     * @param token The address of the ERC20 token to refund.
+     * @param amount The amount of tokens to refund.
+     */
     function refundFactory(
         address token,
         uint256 amount
@@ -472,6 +614,10 @@ contract RewardPool is
     }
 
     /// @notice Factory can refund unused native ETH funding.
+    /**
+     * @notice Factory can refund unused native ETH funding.
+     * @param amount The amount of native ETH to refund.
+     */
     function refundFactoryNative(
         uint256 amount
     ) external whenNotPaused onlyRole(FACTORY_ROLE) whenSequencerUp {
@@ -597,7 +743,7 @@ contract RewardPool is
         if (farmerNonce[farmer] != expectedNonce) revert InvalidNonce();
 
         // Pre-check rate limiting for all tokens in the batch
-        for (uint256 i = 0; i < batches.length; i++) {
+        for (uint256 i = 0; i < batches.length; ++i) {
             uint256 effectiveCooldown = getEffectiveCooldown(batches[i].token);
             if (
                 block.timestamp <
@@ -615,17 +761,23 @@ contract RewardPool is
 
         // Effects: Update all timestamps before any external calls to follow
         // the Checks-Effects-Interactions pattern and mitigate potential reentrancy-related race conditions.
-        for (uint256 i = 0; i < batches.length; i++) {
+        for (uint256 i = 0; i < batches.length; ++i) {
             lastWithdrawalTime[farmer][batches[i].token] = block.timestamp;
         }
 
         // Interactions: Process each withdrawal now that all state changes are complete.
-        for (uint256 i = 0; i < batches.length; i++) {
+        for (uint256 i = 0; i < batches.length; ++i) {
             _executeWithdrawal(batches[i].token, batches[i].factories, farmer);
         }
     }
 
     /// @notice Internal withdrawal logic (shared between regular and batch withdrawals)
+    /**
+     * @notice Internal withdrawal logic (shared between regular and batch withdrawals).
+     * @param token The token to be withdrawn.
+     * @param factories The list of factories to withdraw rewards from.
+     * @param farmer The farmer's address.
+     */
     function _executeWithdrawal(
         address token,
         address[] calldata factories,
@@ -662,6 +814,13 @@ contract RewardPool is
     }
 
     // ----------- Views & Helpers ----------- //
+    /**
+     * @notice Gets the amount owed to a farmer by a specific factory for a given token.
+     * @param farmer The address of the farmer.
+     * @param factory The address of the factory.
+     * @param token The address of the token.
+     * @return The amount owed.
+     */
     function getOwedByFactory(
         address farmer,
         address factory,
@@ -671,6 +830,12 @@ contract RewardPool is
         return accrued[accruedKey];
     }
 
+    /**
+     * @notice Gets the total aggregated amount owed to a farmer for a specific token across all factories.
+     * @param farmer The address of the farmer.
+     * @param token The address of the token.
+     * @return The total amount owed.
+     */
     function getOwedAggregate(
         address farmer,
         address token
@@ -735,7 +900,7 @@ contract RewardPool is
         eligibility = new bool[](tokens.length);
         uint256 currentTime = block.timestamp;
 
-        for (uint256 i = 0; i < tokens.length; i++) {
+        for (uint256 i = 0; i < tokens.length; ++i) {
             uint256 effectiveCooldown = getEffectiveCooldown(tokens[i]);
             eligibility[i] =
                 currentTime >=
@@ -757,8 +922,12 @@ contract RewardPool is
         return farmerNonce[farmer];
     }
 
-    /// @notice Check if a token looks like a standard ERC-20 (purement `view`)
-    /// @dev Heuristic: presence of code + `view` calls that don't revert.
+    /**
+     * @notice Check if a token looks like a standard ERC-20 (purement `view`)
+     * @dev Heuristic: presence of code + `view` calls that don't revert.
+     * @param token The address of the token to check.
+     * @return A boolean indicating if the token is supported.
+     */
     function isTokenSupported(address token) external view returns (bool) {
         if (token == address(0)) return true; // Native is always supported
 
@@ -770,10 +939,14 @@ contract RewardPool is
         if (size == 0) return false;
 
         // Basic ERC20 `view` methods should not revert (balanceOf/totalSupply are required in ERC-20)
-        try IERC20(token).totalSupply() returns (uint256) {} catch {
+        try IERC20(token).totalSupply() returns (uint256) {
+            // Intentionally left blank.
+        } catch {
             return false;
         }
-        try IERC20(token).balanceOf(address(this)) returns (uint256) {} catch {
+        try IERC20(token).balanceOf(address(this)) returns (uint256) {
+            // Intentionally left blank.
+        } catch {
             return false;
         }
 
@@ -813,12 +986,22 @@ contract RewardPool is
     }
 
     // ----------- UUPS ----------- //
+    /**
+     * @notice Authorizes an upgrade to a new implementation contract.
+     * @dev Only the address with `DEFAULT_ADMIN_ROLE` can authorize an upgrade.
+     *      This function is required by the UUPS upgradeable pattern.
+     * @param newImplementation The address of the new implementation contract.
+     */
     function _authorizeUpgrade(
-        address
-    ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+        address newImplementation
+    ) internal override onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Intentionally left blank to allow admin control.
+    }
 
     // ----------- ETH receive guard ----------- //
-    /// @dev Prevent accidental direct ETH transfers that would not be accounted as factory funding.
+    /**
+     * @notice Prevents accidental direct ETH transfers. Ether should be sent via `fundFactoryNative`.
+     */
     receive() external payable {
         revert DirectEthNotAllowed();
     }
@@ -828,7 +1011,14 @@ contract RewardPool is
 
     // ----------- Private Helpers ----------- //
 
-    /// @dev Calculates the total rewards for a given set of factories and clears them.
+    /**
+     * @notice Calculates the total rewards for a given set of factories and clears them.
+     * @dev Calculates the total rewards for a given set of factories and clears them.
+     * @param token The token address.
+     * @param factories The list of factories to calculate rewards from.
+     * @param farmer The farmer's address.
+     * @return gross The total gross amount of rewards.
+     */
     function _calculateAndClearAccruedRewards(
         address token,
         address[] calldata factories,
@@ -851,7 +1041,15 @@ contract RewardPool is
         }
     }
 
-    /// @dev Calculates fees and net amount, then distributes funds to farmer and buffers fees for treasury.
+    /**
+     * @notice Distributes funds to the farmer and treasury after calculating fees.
+     * @dev Calculates fees and net amount, then distributes funds to farmer and buffers fees for treasury.
+     * @param token The token address.
+     * @param farmer The farmer's address.
+     * @param gross The gross amount to distribute.
+     * @return fee The calculated fee amount.
+     * @return net The net amount for the farmer.
+     */
     function _distributeFunds(
         address token,
         address farmer,
@@ -876,7 +1074,14 @@ contract RewardPool is
         }
     }
 
-    /// @dev Computes the storage key for the `accrued` mapping.
+    /**
+     * @notice Computes the storage key for the `accrued` mapping.
+     * @dev Computes the storage key for the `accrued` mapping.
+     * @param farmer The farmer's address.
+     * @param factory The factory's address.
+     * @param token The token's address.
+     * @return The keccak256 hash used as a key.
+     */
     function _getAccruedKey(
         address farmer,
         address factory,
@@ -886,13 +1091,39 @@ contract RewardPool is
     }
 }
 
-interface AggregatorV3Interface {
+/**
+ * @title IAggregatorV3Interface
+ * @notice Interface for the Chainlink Aggregator V3.
+ * @author Chainlink
+ */
+interface IAggregatorV3Interface {
+    /**
+     * @notice Get the number of decimals for the price feed.
+     * @return The number of decimals.
+     */
     function decimals() external view returns (uint8);
 
+    /**
+     * @notice Get a description of the price feed.
+     * @return The description string.
+     */
     function description() external view returns (string memory);
 
+    /**
+     * @notice Get the version of the price feed.
+     * @return The version number.
+     */
     function version() external view returns (uint256);
 
+    /**
+     * @notice Get the data for a specific round.
+     * @param _roundId The ID of the round to retrieve.
+     * @return roundId The round ID.
+     * @return answer The price.
+     * @return startedAt Timestamp of when the round started.
+     * @return updatedAt Timestamp of when the round was updated.
+     * @return answeredInRound The round ID in which the answer was computed.
+     */
     function getRoundData(
         uint80 _roundId
     )
@@ -906,6 +1137,14 @@ interface AggregatorV3Interface {
             uint80 answeredInRound
         );
 
+    /**
+     * @notice Get the latest round data.
+     * @return roundId The round ID.
+     * @return answer The price.
+     * @return startedAt Timestamp of when the round started.
+     * @return updatedAt Timestamp of when the round was updated.
+     * @return answeredInRound The round ID in which the answer was computed.
+     */
     function latestRoundData()
         external
         view
