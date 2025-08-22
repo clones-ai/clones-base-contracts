@@ -51,7 +51,7 @@ The `RewardPool` is a central contract designed to aggregate rewards from multip
    ```env
    PRIVATE_KEY=your_wallet_private_key
    BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
-   ETHERSCAN_API_KEY=your_basescan_api_key
+   ETHERSCAN_API_KEY=your_etherscan_v2_api_key
    ```
    **Note:** Never commit your `.env` file.
 

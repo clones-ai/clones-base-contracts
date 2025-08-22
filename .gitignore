@@ -7,3 +7,4 @@ typechain-types
 dist
 coverage.json
 .openzeppelin
+.DS_Store

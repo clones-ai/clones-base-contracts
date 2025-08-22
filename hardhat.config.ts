@@ -13,7 +13,7 @@ import "solidity-coverage";
 dotenv.config();
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
-const BASESCAN_KEY = process.env.BASESCAN_KEY || ""; // basescan.org API key
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || ""; // https://docs.etherscan.io/etherscan-v2
 
 const config: HardhatUserConfig = {
     solidity: {
@@ -42,10 +42,7 @@ const config: HardhatUserConfig = {
     },
 
     etherscan: {
-        apiKey: {
-            base: BASESCAN_KEY,
-            baseSepolia: BASESCAN_KEY
-        },
+        apiKey: ETHERSCAN_API_KEY,
         customChains: [
             {
                 network: "base",
