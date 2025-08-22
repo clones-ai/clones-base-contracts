@@ -5,7 +5,7 @@ pragma solidity 0.8.30;
  * @title RewardPool (UUPS Upgradeable)
  * @notice Centralized reward pool for multiple factories. Farmers withdraw their rewards and pay gas.
  *         A platform fee is skimmed on each withdrawal and sent to the treasury. Supports multiple ERC20 tokens
- *         and native ETH on Base.
+ *         on Base.
  * @dev    Designed for Base L2. Uses OZ v5.x upgradeable contracts.
  *         Enhanced with Task ID system and Nonce-based withdrawals for maximum security.
  *
@@ -30,7 +30,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
  * @title RewardPool (UUPS Upgradeable)
  * @notice Centralized reward pool for multiple factories. Farmers withdraw their rewards and pay gas.
  *         A platform fee is skimmed on each withdrawal and sent to the treasury. Supports multiple ERC20 tokens
- *         and native ETH on Base.
+ *         on Base.
  * @dev    Designed for Base L2. Uses OZ v5.x upgradeable contracts.
  *         Enhanced with Task ID system and Nonce-based withdrawals for maximum security.
  *
@@ -63,7 +63,6 @@ contract RewardPool is
     error TreasuryNotSet();
     error InsufficientFactoryFunds();
     error NothingToWithdraw();
-    error DirectEthNotAllowed();
     error TaskAlreadyCompleted();
     error InvalidNonce();
     error WithdrawalTooSoon();
@@ -98,6 +97,7 @@ contract RewardPool is
         address indexed oldTreasury,
         address indexed newTreasury
     );
+
     /**
      * @notice Emitted when the platform fee is updated.
      * @param oldFeeBps The previous fee in basis points.
@@ -204,7 +204,7 @@ contract RewardPool is
     /**
      * @notice Emitted when a farmer withdraws rewards.
      * @param farmer The address of the farmer withdrawing rewards.
-     * @param token The address of the token being withdrawn (address(0) for native ETH).
+     * @param token The address of the token being withdrawn.
      * @param grossAmount The total amount of rewards withdrawn before fees.
      * @param feeAmount The portion of the withdrawal taken as a platform fee.
      * @param netAmount The net amount of rewards received by the farmer.
@@ -330,8 +330,6 @@ contract RewardPool is
     uint8 public constant ABSOLUTE_MAX_FACTORIES_PER_WITHDRAWAL = 100;
     /// @notice Maximum array length for view functions.
     uint16 public constant MAX_VIEW_ARRAY_LENGTH = 200;
-    /// @notice Sentinel value representing native ETH in the contract.
-    address public constant NATIVE_TOKEN = address(0);
 
     // ----------- Config ----------- //
     /**
@@ -572,9 +570,6 @@ contract RewardPool is
     }
 
     /// @notice Allows the treasury to sweep accumulated fees for multiple tokens.
-    /// @dev This approach prevents farmer withdrawals from failing if the treasury contract
-    ///      cannot receive ETH or reverts for any reason. The treasurer can call this function
-    ///      to collect fees at their convenience.
     /// @param tokensToSweep An array of token addresses for which to sweep the fees. Must not exceed config.maxSweepTokens.
     function sweepFees(
         address[] calldata tokensToSweep
@@ -596,11 +591,7 @@ contract RewardPool is
             // Effects-first pattern: Reset pending amount before the external call.
             pendingFees[token] = 0;
 
-            if (token == NATIVE_TOKEN) {
-                _sweepNativeFee(amount);
-            } else {
-                _sweepERC20Fee(token, amount);
-            }
+            _sweepERC20Fee(token, amount);
         }
     }
 
@@ -616,7 +607,7 @@ contract RewardPool is
     }
 
     /// @notice Set cooldown period for a specific token
-    /// @param token Token address (address(0) for native ETH)
+    /// @param token Token address
     /// @param cooldownSeconds Cooldown period in seconds
     function setTokenCooldown(
         address token,
@@ -632,7 +623,7 @@ contract RewardPool is
     /// @dev This is a critical administrative function. It should only be used for recovery purposes,
     ///      as misuse could disrupt the contract's accounting of funds intended for rewards.
     ///      It allows transferring any amount of a given ERC-20 token from this contract's balance.
-    /// @param token The address of the ERC-20 token to recover. Must not be the native token address.
+    /// @param token The address of the ERC-20 token to recover.
     /// @param to The address to which the recovered tokens will be sent.
     /// @param amount The amount of tokens to recover.
     function recoverERC20(
@@ -641,8 +632,7 @@ contract RewardPool is
         uint256 amount
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _checkSequencerStatus();
-        // Disallow recovering the native token or sending to the zero address.
-        if (token == NATIVE_TOKEN) revert TokenCannotBeZeroAddress();
+
         if (to == address(0)) revert ReceiverCannotBeZeroAddress();
         if (amount == 0) return; // No operation needed if amount is zero.
 
@@ -689,7 +679,6 @@ contract RewardPool is
         uint256 amount
     ) external whenNotPaused onlyRole(FACTORY_ROLE) {
         _checkSequencerStatus();
-        if (token == address(0)) revert TokenCannotBeZeroAddress();
         if (amount == 0) return; // no-op
 
         // Record balance before transfer to measure actual amount received
@@ -715,19 +704,6 @@ contract RewardPool is
         emit FactoryFunded(msg.sender, token, amount, actualAmount);
     }
 
-    /// @notice Factory deposits native ETH into the pool.
-    function fundFactoryNative()
-        external
-        payable
-        whenNotPaused
-        onlyRole(FACTORY_ROLE)
-    {
-        _checkSequencerStatus();
-        if (msg.value == 0) return;
-        factoryFunding[msg.sender][NATIVE_TOKEN] += msg.value;
-        emit FactoryFunded(msg.sender, NATIVE_TOKEN, msg.value, msg.value);
-    }
-
     /**
      * @notice Factory can refund unused ERC20 funding (i.e., tokens not yet allocated to farmers).
      * @param token The address of the ERC20 token to refund.
@@ -738,7 +714,6 @@ contract RewardPool is
         uint256 amount
     ) external nonReentrant whenNotPaused onlyRole(FACTORY_ROLE) {
         _checkSequencerStatus();
-        if (token == address(0)) revert TokenCannotBeZeroAddress();
         mapping(address => uint256) storage fundingByToken = factoryFunding[
             msg.sender
         ];
@@ -751,30 +726,10 @@ contract RewardPool is
         emit FactoryRefunded(msg.sender, token, amount);
     }
 
-    /**
-     * @notice Factory can refund unused native ETH funding.
-     * @param amount The amount of native ETH to refund.
-     */
-    function refundFactoryNative(
-        uint256 amount
-    ) external nonReentrant whenNotPaused onlyRole(FACTORY_ROLE) {
-        _checkSequencerStatus();
-        mapping(address => uint256) storage fundingByToken = factoryFunding[
-            msg.sender
-        ];
-        uint256 bal = fundingByToken[NATIVE_TOKEN];
-        if (bal < amount) revert InsufficientFactoryFunds();
-        unchecked {
-            fundingByToken[NATIVE_TOKEN] = bal - amount;
-        }
-        Address.sendValue(payable(msg.sender), amount);
-        emit FactoryRefunded(msg.sender, NATIVE_TOKEN, amount);
-    }
-
     /// @notice Record reward with unique task ID to prevent duplicate rewards for the same task
     /// @dev    ONLY secure method to record rewards - prevents duplicate task completion
     /// @param farmer Address receiving the reward
-    /// @param token Token address (or address(0) for ETH)
+    /// @param token Token address
     /// @param amount Reward amount
     /// @param taskId Unique identifier for the completed task
     function recordReward(
@@ -1099,8 +1054,6 @@ contract RewardPool is
      * @return A boolean indicating if the token is supported.
      */
     function isTokenSupported(address token) external returns (bool) {
-        if (token == address(0)) return true; // Native is always supported
-
         // Must be a contract.
         // NOTE: extcodesize check can be bypassed by contracts during construction.
         // This is acceptable here as this is a non-critical helper function.
@@ -1139,8 +1092,6 @@ contract RewardPool is
         address token,
         uint256 testAmount
     ) external returns (bool, uint256) {
-        if (token == address(0)) return (true, 0); // Native ETH
-
         uint256 balanceBefore = IERC20(token).balanceOf(address(this));
 
         try
@@ -1184,14 +1135,6 @@ contract RewardPool is
     ) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newImplementation == address(0)) revert InvalidNewImplementation();
         // Intentionally left blank to allow admin control.
-    }
-
-    // ----------- ETH receive guard ----------- //
-    /**
-     * @notice Prevents accidental direct ETH transfers. Ether should be sent via `fundFactoryNative`.
-     */
-    receive() external payable {
-        revert DirectEthNotAllowed();
     }
 
     // ----------- Storage gap ----------- //
@@ -1253,13 +1196,8 @@ contract RewardPool is
 
         // --- Interactions ---
         if (net > 0) {
-            if (token == NATIVE_TOKEN) {
-                // send ETH
-                Address.sendValue(payable(farmer), net);
-            } else {
-                // send ERC20
-                IERC20(token).safeTransfer(farmer, net);
-            }
+            // send ERC20
+            IERC20(token).safeTransfer(farmer, net);
         }
     }
 
@@ -1279,23 +1217,6 @@ contract RewardPool is
     }
 
     // --- Fee Sweep Helpers ---
-
-    /**
-     * @notice Sweeps pending native ETH fees to the treasury.
-     * @param amount The amount of native ETH to sweep.
-     */
-    function _sweepNativeFee(uint256 amount) private {
-        // Use .call to send ETH without reverting the entire transaction if it fails.
-        (bool success, ) = config.treasury.call{value: amount}("");
-        if (success) {
-            emit FeeSwept(NATIVE_TOKEN, config.treasury, amount);
-        } else {
-            // If the transfer fails, restore the pending amount so it can be tried again.
-            // This is safe from reentrancy due to the nonReentrant guard on the public calling function.
-            pendingFees[NATIVE_TOKEN] = amount;
-            emit FeeSweepFailed(NATIVE_TOKEN, config.treasury, amount);
-        }
-    }
 
     /**
      * @notice Sweeps pending ERC20 fees to the treasury.
