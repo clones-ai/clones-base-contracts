@@ -72,7 +72,7 @@ describe("RewardPool - Security Tests", function () {
             // Fund the factory with the malicious token
             await maliciousToken
                 .connect(factory)
-                .approve(rewardPool.getAddress(), rewardAmount);
+                .approve(await rewardPool.getAddress(), rewardAmount);
             await rewardPool
                 .connect(factory)
                 .fundFactory(await maliciousToken.getAddress(), rewardAmount);
@@ -132,7 +132,7 @@ describe("RewardPool - Security Tests", function () {
 
             await legitimateToken
                 .connect(factory)
-                .approve(rewardPool.getAddress(), rewardAmount);
+                .approve(await rewardPool.getAddress(), rewardAmount);
             await rewardPool
                 .connect(factory)
                 .fundFactory(await legitimateToken.getAddress(), rewardAmount);

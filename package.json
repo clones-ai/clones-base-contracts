@@ -22,6 +22,7 @@
     "devDependencies": {
         "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
         "@nomicfoundation/hardhat-ethers": "^3.1.0",
+        "@nomicfoundation/hardhat-network-helpers": "^1.1.0",
         "@nomicfoundation/hardhat-toolbox": "^6.1.0",
         "@nomicfoundation/hardhat-verify": "^2.0.14",
         "@typechain/ethers-v6": "^0.5.1",

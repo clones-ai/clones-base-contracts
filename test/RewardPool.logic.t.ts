@@ -94,7 +94,7 @@ describe("RewardPool - Logic and Edge Case Tests", function () {
 
             await feeToken
                 .connect(factory)
-                .approve(rewardPool.getAddress(), initialAmount);
+                .approve(await rewardPool.getAddress(), initialAmount);
         });
 
         it("should revert if token fee is too high", async function () {
