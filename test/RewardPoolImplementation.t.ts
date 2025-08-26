@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { 
+import {
     RewardPoolFactory,
     RewardPoolImplementation,
     TestToken,
@@ -9,13 +9,13 @@ import {
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 
-describe("RewardPoolImplementation", function() {
+describe("RewardPoolImplementation", function () {
     let factory: RewardPoolFactory;
     let implementation: RewardPoolImplementation;
     let vault: RewardPoolImplementation;
     let testToken: TestToken;
     let claimRouter: ClaimRouter;
-    
+
     let owner: SignerWithAddress;
     let timelock: SignerWithAddress;
     let guardian: SignerWithAddress;
@@ -29,7 +29,7 @@ describe("RewardPoolImplementation", function() {
     const DOMAIN_NAME = "FactoryVault";
     const DOMAIN_VERSION = "1";
 
-    beforeEach(async function() {
+    beforeEach(async function () {
         [owner, timelock, guardian, publisher, newPublisher, creator, treasury, funder, claimer] = await ethers.getSigners();
 
         // Deploy test token
@@ -59,19 +59,19 @@ describe("RewardPoolImplementation", function() {
         await factory.connect(timelock).setTokenAllowed(await testToken.getAddress(), true);
 
         // Create vault
-        await factory.connect(creator).createPool(await testToken.getAddress());
         const [vaultAddress] = await factory.predictPoolAddress(creator.address, await testToken.getAddress());
+        await factory.connect(creator).createPool(await testToken.getAddress());
         vault = await ethers.getContractAt("RewardPoolImplementation", vaultAddress);
     });
 
-    describe("Initialization", function() {
-        it("Should be initialized correctly after creation", async function() {
+    describe("Initialization", function () {
+        it("Should be initialized correctly after creation", async function () {
             expect(await vault.token()).to.equal(await testToken.getAddress());
             expect(await vault.platformTreasury()).to.equal(treasury.address);
             expect(await vault.factory()).to.equal(await factory.getAddress());
         });
 
-        it("Should prevent direct initialization on implementation", async function() {
+        it("Should prevent direct initialization on implementation", async function () {
             await expect(implementation.initialize(
                 await testToken.getAddress(),
                 creator.address,
@@ -80,7 +80,7 @@ describe("RewardPoolImplementation", function() {
             )).to.be.revertedWithCustomError(implementation, "InvalidInitialization");
         });
 
-        it("Should prevent re-initialization", async function() {
+        it("Should prevent re-initialization", async function () {
             await expect(vault.initialize(
                 await testToken.getAddress(),
                 creator.address,
@@ -90,15 +90,15 @@ describe("RewardPoolImplementation", function() {
         });
     });
 
-    describe("Funding", function() {
+    describe("Funding", function () {
         const FUND_AMOUNT = ethers.parseUnits("1000", 18);
 
-        beforeEach(async function() {
+        beforeEach(async function () {
             await testToken.mint(funder.address, FUND_AMOUNT);
             await testToken.connect(funder).approve(await await vault.getAddress(), FUND_AMOUNT);
         });
 
-        it("Should fund vault successfully", async function() {
+        it("Should fund vault successfully", async function () {
             await expect(vault.connect(funder).fund(FUND_AMOUNT))
                 .to.emit(vault, "Funded")
                 .withArgs(funder.address, await testToken.getAddress(), FUND_AMOUNT);
@@ -106,26 +106,26 @@ describe("RewardPoolImplementation", function() {
             expect(await testToken.balanceOf(await await vault.getAddress())).to.equal(FUND_AMOUNT);
         });
 
-        it("Should reject fee-on-transfer tokens", async function() {
+        it("Should reject fee-on-transfer tokens", async function () {
             // Deploy fee-on-transfer token mock
             const FeeTokenFactory = await ethers.getContractFactory("FeeOnTransferToken");
             const feeToken = await FeeTokenFactory.deploy("FeeToken", "FEE"); // 1% fee hardcoded in contract
-            
-            await feeToken.mint(funder.address, FUND_AMOUNT);
-            await feeToken.connect(funder).approve(await await vault.getAddress(), FUND_AMOUNT);
 
             // Create vault for fee token
             await factory.connect(timelock).setTokenAllowed(await feeToken.getAddress(), true);
-            await factory.connect(creator).createPool(await feeToken.getAddress());
             const [feeVaultAddress] = await factory.predictPoolAddress(creator.address, await feeToken.getAddress());
+            await factory.connect(creator).createPool(await feeToken.getAddress());
             const feeVault = await ethers.getContractAt("RewardPoolImplementation", feeVaultAddress);
+
+            await feeToken.mint(funder.address, FUND_AMOUNT);
+            await feeToken.connect(funder).approve(await feeVault.getAddress(), FUND_AMOUNT);
 
             // Fee-on-transfer tokens should be rejected
             await expect(feeVault.connect(funder).fund(FUND_AMOUNT))
                 .to.be.reverted;
         });
 
-        it("Should fund with permit successfully", async function() {
+        it("Should fund with permit successfully", async function () {
             const deadline = await time.latest() + 3600;
             const permitData = await getPermitSignature(
                 funder,
@@ -142,14 +142,14 @@ describe("RewardPoolImplementation", function() {
                 permitData.r,
                 permitData.s
             )).to.emit(vault, "Funded")
-              .withArgs(funder.address, await testToken.getAddress(), FUND_AMOUNT);
+                .withArgs(funder.address, await testToken.getAddress(), FUND_AMOUNT);
 
             expect(await testToken.balanceOf(await await vault.getAddress())).to.equal(FUND_AMOUNT);
         });
 
-        it("Should handle permit failure gracefully", async function() {
+        it("Should handle permit failure gracefully", async function () {
             const deadline = await time.latest() + 3600;
-            
+
             // Use invalid signature
             await expect(vault.connect(funder).fundWithPermit(
                 FUND_AMOUNT,
@@ -158,25 +158,25 @@ describe("RewardPoolImplementation", function() {
                 "0x0000000000000000000000000000000000000000000000000000000000000000",
                 "0x0000000000000000000000000000000000000000000000000000000000000000"
             )).to.be.revertedWithCustomError(vault, "SecurityViolation")
-              .withArgs("permit");
+                .withArgs("permit");
         });
     });
 
-    describe("Claims with EIP-712", function() {
+    describe("Claims with EIP-712", function () {
         const FUND_AMOUNT = ethers.parseUnits("1000", 18);
         const CLAIM_AMOUNT = ethers.parseUnits("100", 18);
         const FEE_BPS = 1000; // 10%
         const EXPECTED_FEE = CLAIM_AMOUNT * BigInt(FEE_BPS) / BigInt(10000);
         const EXPECTED_NET = CLAIM_AMOUNT - EXPECTED_FEE;
 
-        beforeEach(async function() {
+        beforeEach(async function () {
             // Fund vault
             await testToken.mint(funder.address, FUND_AMOUNT);
             await testToken.connect(funder).approve(await await vault.getAddress(), FUND_AMOUNT);
             await vault.connect(funder).fund(FUND_AMOUNT);
         });
 
-        it("Should process claim with valid signature", async function() {
+        it("Should process claim with valid signature", async function () {
             const deadline = await time.latest() + 3600;
             const signature = await signClaim(
                 publisher,
@@ -197,9 +197,9 @@ describe("RewardPoolImplementation", function() {
             expect(await testToken.balanceOf(treasury.address)).to.equal(EXPECTED_FEE);
         });
 
-        it("Should handle cumulative claims correctly", async function() {
+        it("Should handle cumulative claims correctly", async function () {
             const deadline = await time.latest() + 3600;
-            
+
             // First claim: 100 tokens
             let signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
             await vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, signature);
@@ -212,7 +212,7 @@ describe("RewardPoolImplementation", function() {
             const additionalNet = additionalAmount - additionalFee;
 
             signature = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount, deadline + 1);
-            
+
             const initialBalance = await testToken.balanceOf(claimer.address);
             await vault.payWithSig(claimer.address, cumulativeAmount, deadline + 1, signature);
 
@@ -220,7 +220,7 @@ describe("RewardPoolImplementation", function() {
             expect(await testToken.balanceOf(claimer.address)).to.equal(initialBalance + additionalNet);
         });
 
-        it("Should reject expired signatures", async function() {
+        it("Should reject expired signatures", async function () {
             const expiredDeadline = await time.latest() - 1;
             const signature = await signClaim(
                 publisher,
@@ -235,7 +235,7 @@ describe("RewardPoolImplementation", function() {
                 .withArgs("deadline");
         });
 
-        it("Should reject signatures too far in future", async function() {
+        it("Should reject signatures too far in future", async function () {
             const farFutureDeadline = await time.latest() + (8 * 24 * 60 * 60); // 8 days
             const signature = await signClaim(
                 publisher,
@@ -250,7 +250,7 @@ describe("RewardPoolImplementation", function() {
                 .withArgs("deadline");
         });
 
-        it("Should reject invalid signatures", async function() {
+        it("Should reject invalid signatures", async function () {
             const deadline = await time.latest() + 3600;
             const invalidSignature = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
@@ -258,41 +258,41 @@ describe("RewardPoolImplementation", function() {
                 .to.be.revertedWithCustomError(vault, "ECDSAInvalidSignature");
         });
 
-        it("Should accept signatures from old publisher during grace period", async function() {
+        it("Should accept signatures from old publisher during grace period", async function () {
             // Initiate publisher rotation
             await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
-            
+
             const deadline = await time.latest() + 3600;
-            
+
             // Sign with old publisher
             const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
-            
+
             // Sign with new publisher
             const newSignature = await signClaim(newPublisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline + 1);
 
             // Both should work during grace period
             await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, oldSignature))
                 .to.emit(vault, "ClaimedMinimal");
-            
+
             // Reset for second test
             await testToken.mint(funder.address, FUND_AMOUNT);
             await testToken.connect(funder).approve(await await vault.getAddress(), FUND_AMOUNT);
             await vault.connect(funder).fund(FUND_AMOUNT);
-            
+
             const newClaimer = owner; // Use different address
             const newSignature2 = await signClaim(newPublisher, await vault.getAddress(), newClaimer.address, CLAIM_AMOUNT, deadline + 2);
-            
+
             await expect(vault.payWithSig(newClaimer.address, CLAIM_AMOUNT, deadline + 2, newSignature2))
                 .to.emit(vault, "ClaimedMinimal");
         });
 
-        it("Should reject old publisher after grace period", async function() {
+        it("Should reject old publisher after grace period", async function () {
             // Initiate publisher rotation
             await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
-            
+
             // Advance time beyond grace period
             await time.increase(7 * 24 * 60 * 60 + 1);
-            
+
             const deadline = await time.latest() + 3600;
             const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
@@ -301,7 +301,7 @@ describe("RewardPoolImplementation", function() {
                 .withArgs("signature");
         });
 
-        it("Should prevent duplicate claims", async function() {
+        it("Should prevent duplicate claims", async function () {
             const deadline = await time.latest() + 3600;
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
@@ -313,7 +313,7 @@ describe("RewardPoolImplementation", function() {
                 .withArgs("claim");
         });
 
-        it("Should reject claims with insufficient vault balance", async function() {
+        it("Should reject claims with insufficient vault balance", async function () {
             const deadline = await time.latest() + 3600;
             const largeAmount = FUND_AMOUNT + ethers.parseUnits("1", 18);
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, largeAmount, deadline);
@@ -324,29 +324,29 @@ describe("RewardPoolImplementation", function() {
         });
     });
 
-    describe("Gas Benchmarks", function() {
+    describe("Gas Benchmarks", function () {
         const FUND_AMOUNT = ethers.parseUnits("1000", 18);
         const CLAIM_AMOUNT = ethers.parseUnits("100", 18);
 
-        beforeEach(async function() {
+        beforeEach(async function () {
             await testToken.mint(funder.address, FUND_AMOUNT);
             await testToken.connect(funder).approve(await await vault.getAddress(), FUND_AMOUNT);
             await vault.connect(funder).fund(FUND_AMOUNT);
         });
 
-        it("Should benchmark first claim gas usage", async function() {
+        it("Should benchmark first claim gas usage", async function () {
             const deadline = await time.latest() + 3600;
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
             const tx = await vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, signature);
             const receipt = await tx.wait();
-            
+
             // Target: < 140k gas for first claim
             console.log(`First claim gas used: ${receipt!.gasUsed.toString()}`);
             expect(receipt!.gasUsed).to.be.lessThan(200000);
         });
 
-        it("Should benchmark subsequent claim gas usage", async function() {
+        it("Should benchmark subsequent claim gas usage", async function () {
             // Make first claim
             const deadline1 = await time.latest() + 3600;
             const signature1 = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline1);
@@ -359,25 +359,25 @@ describe("RewardPoolImplementation", function() {
 
             const tx = await vault.payWithSig(claimer.address, cumulativeAmount, deadline2, signature2);
             const receipt = await tx.wait();
-            
+
             // Target: < 100k gas for subsequent claims
             console.log(`Subsequent claim gas used: ${receipt!.gasUsed.toString()}`);
             expect(receipt!.gasUsed).to.be.lessThan(110000);
         });
     });
 
-    describe("Emergency Functions", function() {
-        it("Should allow timelock to update treasury", async function() {
+    describe("Emergency Functions", function () {
+        it("Should allow timelock to update treasury", async function () {
             const newTreasury = owner.address;
-            
+
             await expect(vault.connect(timelock).updatePlatformTreasury(newTreasury))
                 .to.emit(vault, "PlatformTreasuryUpdated")
                 .withArgs(treasury.address, newTreasury);
-            
+
             expect(await vault.platformTreasury()).to.equal(newTreasury);
         });
 
-        it("Should reject treasury update from non-timelock", async function() {
+        it("Should reject treasury update from non-timelock", async function () {
             await expect(vault.connect(creator).updatePlatformTreasury(owner.address))
                 .to.be.revertedWithCustomError(vault, "Unauthorized")
                 .withArgs("timelock");
@@ -400,7 +400,7 @@ describe("RewardPoolImplementation", function() {
         deadline: number
     ): Promise<string> {
         const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
-        
+
         const resolvedAddress = await getAddress(vaultAddress);
         const domain = {
             name: DOMAIN_NAME,
@@ -435,7 +435,7 @@ describe("RewardPoolImplementation", function() {
     ) {
         const nonce = await token.nonces(signer.address);
         const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
-        
+
         const domain = {
             name: await token.name(),
             version: "1",
@@ -463,7 +463,7 @@ describe("RewardPoolImplementation", function() {
 
         const signature = await signer.signTypedData(domain, types, value);
         const { v, r, s } = ethers.Signature.from(signature);
-        
+
         return { v, r, s };
     }
 });

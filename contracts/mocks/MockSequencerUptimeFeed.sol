@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IAggregatorV3Interface} from "contracts/RewardPool.sol";
+import {IAggregatorV3Interface} from "contracts/interfaces/IAggregatorV3Interface.sol";
 
 /// @title MockSequencerUptimeFeed
 /// @notice A mock for the Chainlink L2 Sequencer Uptime Feed.
@@ -36,13 +36,7 @@ contract MockSequencerUptimeFeed is IAggregatorV3Interface {
         external
         view
         override
-        returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
         return (1, _answer, block.timestamp, block.timestamp, 1);
     }
@@ -51,13 +45,7 @@ contract MockSequencerUptimeFeed is IAggregatorV3Interface {
         external
         view
         override
-        returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
         return (1, _answer, block.timestamp, block.timestamp, 1);
     }

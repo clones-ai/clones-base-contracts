@@ -2,7 +2,7 @@
     "name": "clones-base-contracts",
     "version": "1.0.0",
     "private": true,
-    "description": "CLONES project smart contracts for Base (L2). Hardhat 2 + Ethers v6 + OpenZeppelin v5.",
+    "description": "CLONES project smart contracts for Base (L2)",
     "license": "MIT",
     "scripts": {
         "build": "hardhat compile",
@@ -10,14 +10,12 @@
         "test": "hardhat test",
         "coverage": "hardhat coverage",
         "lint:sol": "solhint 'contracts/**/*.sol'",
-        "deploy:base": "hardhat run scripts/deploy.ts --network base",
-        "deploy:baseSepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
-        "deploy:upgradeable:base": "hardhat run scripts/deploy-upgradeable.ts --network base",
-        "deploy:upgradeable:baseSepolia": "hardhat run scripts/deploy-upgradeable.ts --network baseSepolia",
+        "deploy-safe:baseSepolia": "hardhat run scripts/deploy-sepolia-safe.ts --network baseSepolia",
+        "deploy-safe:base": "hardhat run scripts/deploy-sepolia-safe.ts --network base",
+        "finish-setup:baseSepolia": "hardhat run scripts/finish-setup.ts --network baseSepolia",
         "verify": "ts-node scripts/verify.ts",
         "verify:base": "ts-node scripts/verify.ts --network base",
-        "verify:baseSepolia": "ts-node scripts/verify.ts --network baseSepolia",
-        "upgrade": "hardhat run scripts/upgrade.ts"
+        "verify:baseSepolia": "ts-node scripts/verify.ts --network baseSepolia"
     },
     "devDependencies": {
         "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
@@ -32,7 +30,8 @@
         "chai": "^4.4.1",
         "hardhat": "^2.26.0",
         "hardhat-gas-reporter": "^2.2.0",
-        "solhint": "^6.0.0",
+        "prettier-plugin-solidity": "^2.1.0",
+        "solhint": "^6.0.1",
         "solhint-plugin-prettier": "^0.1.0",
         "solidity-coverage": "^0.8.16",
         "ts-node": "^10.9.2",

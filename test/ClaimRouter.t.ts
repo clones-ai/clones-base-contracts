@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
-import { 
+import {
     RewardPoolFactory,
     RewardPoolImplementation,
     TestToken,
@@ -10,7 +10,7 @@ import {
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 
-describe("ClaimRouter", function() {
+describe("ClaimRouter", function () {
     let factory: RewardPoolFactory;
     let implementation: RewardPoolImplementation;
     let vault1: RewardPoolImplementation;
@@ -18,7 +18,7 @@ describe("ClaimRouter", function() {
     let testToken: TestToken;
     let testToken2: TestToken;
     let claimRouter: ClaimRouter;
-    
+
     let timelock: SignerWithAddress;
     let guardian: SignerWithAddress;
     let publisher: SignerWithAddress;
@@ -34,7 +34,7 @@ describe("ClaimRouter", function() {
     const FUND_AMOUNT = ethers.parseUnits("1000", 18);
     const CLAIM_AMOUNT = ethers.parseUnits("100", 18);
 
-    beforeEach(async function() {
+    beforeEach(async function () {
         [timelock, guardian, publisher, creator, creator2, treasury, funder, claimer, relayer] = await ethers.getSigners();
 
         // Deploy test tokens
@@ -66,33 +66,33 @@ describe("ClaimRouter", function() {
         await factory.connect(timelock).setTokenAllowed(await testToken2.getAddress(), true);
 
         // Create vaults
-        await factory.connect(creator).createPool(await testToken.getAddress());
-        await factory.connect(creator2).createPool(await testToken2.getAddress());
-        
         const [vault1Address] = await factory.predictPoolAddress(creator.address, await testToken.getAddress());
         const [vault2Address] = await factory.predictPoolAddress(creator2.address, await testToken2.getAddress());
-        
+
+        await factory.connect(creator).createPool(await testToken.getAddress());
+        await factory.connect(creator2).createPool(await testToken2.getAddress());
+
         vault1 = await ethers.getContractAt("RewardPoolImplementation", vault1Address);
         vault2 = await ethers.getContractAt("RewardPoolImplementation", vault2Address);
 
         // Fund vaults
         await testToken.mint(funder.address, FUND_AMOUNT * 2n);
         await testToken2.mint(funder.address, FUND_AMOUNT * 2n);
-        
+
         await testToken.connect(funder).approve(await await vault1.getAddress(), FUND_AMOUNT);
         await testToken2.connect(funder).approve(await await vault2.getAddress(), FUND_AMOUNT);
-        
+
         await vault1.connect(funder).fund(FUND_AMOUNT);
         await vault2.connect(funder).fund(FUND_AMOUNT);
     });
 
-    describe("Deployment", function() {
-        it("Should set correct initial state", async function() {
+    describe("Deployment", function () {
+        it("Should set correct initial state", async function () {
             expect(await claimRouter.timelock()).to.equal(timelock.address);
             expect(await claimRouter.maxBatchSize()).to.equal(20);
         });
 
-        it("Should reject zero address timelock", async function() {
+        it("Should reject zero address timelock", async function () {
             const RouterFactory = await ethers.getContractFactory("ClaimRouter");
             await expect(RouterFactory.deploy(ethers.ZeroAddress))
                 .to.be.revertedWithCustomError(claimRouter, "InvalidParameter")
@@ -100,26 +100,26 @@ describe("ClaimRouter", function() {
         });
     });
 
-    describe("Governance", function() {
-        it("Should allow timelock to approve factories", async function() {
+    describe("Governance", function () {
+        it("Should allow timelock to approve factories", async function () {
             const newFactory = creator.address; // Use any address for test
-            
+
             await expect(claimRouter.connect(timelock).setFactoryApproved(newFactory, true))
                 .to.emit(claimRouter, "FactoryApprovalUpdated")
                 .withArgs(newFactory, true);
-            
+
             expect(await claimRouter.approvedFactories(newFactory)).to.be.true;
         });
 
-        it("Should allow timelock to update batch size", async function() {
+        it("Should allow timelock to update batch size", async function () {
             await expect(claimRouter.connect(timelock).setMaxBatchSize(50))
                 .to.emit(claimRouter, "MaxBatchSizeUpdated")
                 .withArgs(20, 50);
-            
+
             expect(await claimRouter.maxBatchSize()).to.equal(50);
         });
 
-        it("Should reject non-timelock governance operations", async function() {
+        it("Should reject non-timelock governance operations", async function () {
             await expect(claimRouter.connect(creator).setFactoryApproved(creator.address, true))
                 .to.be.revertedWithCustomError(claimRouter, "Unauthorized")
                 .withArgs("timelock");
@@ -129,7 +129,7 @@ describe("ClaimRouter", function() {
                 .withArgs("timelock");
         });
 
-        it("Should reject invalid batch sizes", async function() {
+        it("Should reject invalid batch sizes", async function () {
             await expect(claimRouter.connect(timelock).setMaxBatchSize(0))
                 .to.be.revertedWithCustomError(claimRouter, "InvalidParameter")
                 .withArgs("batch_size");
@@ -139,15 +139,15 @@ describe("ClaimRouter", function() {
                 .withArgs("batch_size");
         });
 
-        it("Should reject zero address factory", async function() {
+        it("Should reject zero address factory", async function () {
             await expect(claimRouter.connect(timelock).setFactoryApproved(ethers.ZeroAddress, true))
                 .to.be.revertedWithCustomError(claimRouter, "InvalidParameter")
                 .withArgs("factory");
         });
     });
 
-    describe("Batch Claims", function() {
-        it("Should process single claim successfully", async function() {
+    describe("Batch Claims", function () {
+        it("Should process single claim successfully", async function () {
             const deadline = await time.latest() + 3600;
             const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
@@ -167,9 +167,9 @@ describe("ClaimRouter", function() {
             expect(await testToken.balanceOf(claimer.address)).to.be.greaterThan(0);
         });
 
-        it("Should process multiple claims in batch", async function() {
+        it("Should process multiple claims in batch", async function () {
             const deadline = await time.latest() + 3600;
-            
+
             const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
             const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
@@ -198,9 +198,9 @@ describe("ClaimRouter", function() {
             expect(await testToken2.balanceOf(claimer.address)).to.be.greaterThan(0);
         });
 
-        it("Should handle mixed success/failure gracefully", async function() {
+        it("Should handle mixed success/failure gracefully", async function () {
             const deadline = await time.latest() + 3600;
-            
+
             const validSignature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
             const invalidSignature = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
@@ -228,7 +228,7 @@ describe("ClaimRouter", function() {
                 .withArgs(relayer.address, 1, 1, CLAIM_AMOUNT, anyValue, anyValue, anyValue);
         });
 
-        it("Should reject claims from non-approved factories", async function() {
+        it("Should reject claims from non-approved factories", async function () {
             // Create a different factory
             const NewFactoryFactory = await ethers.getContractFactory("RewardPoolFactory");
             const newFactory = await NewFactoryFactory.deploy(
@@ -241,16 +241,15 @@ describe("ClaimRouter", function() {
 
             // Don't approve this factory in router
             await newFactory.connect(timelock).setTokenAllowed(await testToken.getAddress(), true);
-            await newFactory.connect(creator).createPool(await testToken.getAddress());
-            
             const [rogueVaultAddress] = await newFactory.predictPoolAddress(creator.address, await testToken.getAddress());
+            await newFactory.connect(creator).createPool(await testToken.getAddress());
             const rogueVault = await ethers.getContractAt("RewardPoolImplementation", rogueVaultAddress);
 
             const deadline = await time.latest() + 3600;
             const signature = await signClaim(publisher, await rogueVault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
             const claimData = [{
-                vault: await await rogueVault.getAddress(),
+                vault: await rogueVault.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
                 deadline,
@@ -259,12 +258,12 @@ describe("ClaimRouter", function() {
 
             await expect(claimRouter.connect(relayer).claimAll(claimData))
                 .to.emit(claimRouter, "ClaimFailed")
-                .withArgs(await await rogueVault.getAddress(), claimer.address, "Factory not approved")
+                .withArgs(await rogueVault.getAddress(), claimer.address, "Factory not approved")
                 .to.emit(claimRouter, "BatchClaimed")
                 .withArgs(relayer.address, 0, 1, 0, 0, 0, anyValue);
         });
 
-        it("Should handle paused vaults gracefully", async function() {
+        it("Should handle paused vaults gracefully", async function () {
             // Pause vault1
             await vault1.connect(guardian).pause();
 
@@ -297,13 +296,13 @@ describe("ClaimRouter", function() {
                 .withArgs(relayer.address, 1, 1, CLAIM_AMOUNT, anyValue, anyValue, anyValue);
         });
 
-        it("Should reject empty batches", async function() {
+        it("Should reject empty batches", async function () {
             await expect(claimRouter.connect(relayer).claimAll([]))
                 .to.be.revertedWithCustomError(claimRouter, "InvalidParameter")
                 .withArgs("batch_size");
         });
 
-        it("Should reject oversized batches", async function() {
+        it("Should reject oversized batches", async function () {
             // Create batch larger than maxBatchSize (20)
             const largeBatch = Array(21).fill({
                 vault: await await vault1.getAddress(),
@@ -318,7 +317,7 @@ describe("ClaimRouter", function() {
                 .withArgs("batch_size");
         });
 
-        it("Should handle invalid vault addresses", async function() {
+        it("Should handle invalid vault addresses", async function () {
             const deadline = await time.latest() + 3600;
             const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
 
@@ -337,23 +336,23 @@ describe("ClaimRouter", function() {
         });
     });
 
-    describe("Gas Benchmarks", function() {
-        it("Should benchmark batch claim gas usage", async function() {
+    describe("Gas Benchmarks", function () {
+        it("Should benchmark batch claim gas usage", async function () {
             const deadline = await time.latest() + 3600;
-            
+
             // Create batch of 5 claims
             const batchSize = 5;
             const claimData = [];
-            
+
             for (let i = 0; i < batchSize; i++) {
                 const signature = await signClaim(
-                    publisher, 
-                    i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(), 
-                    claimer.address, 
-                    CLAIM_AMOUNT, 
+                    publisher,
+                    i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(),
+                    claimer.address,
+                    CLAIM_AMOUNT,
                     deadline + i
                 );
-                
+
                 claimData.push({
                     vault: i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(),
                     account: claimer.address,
@@ -365,7 +364,7 @@ describe("ClaimRouter", function() {
 
             const tx = await claimRouter.connect(relayer).claimAll(claimData);
             const receipt = await tx.wait();
-            
+
             // Target: < 110k gas per claim average
             const gasPerClaim = Number(receipt!.gasUsed) / batchSize;
             console.log(`Batch claim gas per item: ${gasPerClaim.toFixed(0)}`);
@@ -382,7 +381,7 @@ describe("ClaimRouter", function() {
         deadline: number
     ): Promise<string> {
         const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
-        
+
         const domain = {
             name: DOMAIN_NAME,
             version: DOMAIN_VERSION,

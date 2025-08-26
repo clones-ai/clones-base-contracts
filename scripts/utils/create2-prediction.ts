@@ -8,15 +8,16 @@ import { ethers } from "ethers";
 /**
  * Compute salt for pool creation - MUST match RewardPoolFactory._computeSalt exactly
  * @param creator Creator address
- * @param token Token address  
+ * @param token Token address
+ * @param nonce Nonce for multiple pools per creator/token pair
  * @returns Salt for CREATE2
  */
-export function computeSalt(creator: string, token: string): string {
-    // EXACT match to Solidity: keccak256(abi.encode(creator, token)) - NO counter race conditions
+export function computeSalt(creator: string, token: string, nonce: number): string {
+    // EXACT match to Solidity: keccak256(abi.encode(creator, token, nonce))
     const abiCoder = ethers.AbiCoder.defaultAbiCoder();
     const encoded = abiCoder.encode(
-        ['address', 'address'], 
-        [creator, token]
+        ['address', 'address', 'uint256'],
+        [creator, token, nonce]
     );
     return ethers.keccak256(encoded);
 }
@@ -32,11 +33,11 @@ export function minimalProxyInitCode(implementation: string): string {
     const prefix1 = "0x3d602d80600a3d3981f3";
     const prefix2 = "0x363d3d373d3d3d363d73";
     const suffix = "0x5af43d82803e903d91602b57fd5bf3";
-    
+
     // CRITICAL: Implementation address must be exactly 20 bytes (NOT zero-padded to 32 bytes)
     // Use zeroPadValue(impl, 20) to ensure exact 20-byte representation
     const implPadded = ethers.zeroPadValue(implementation, 20);
-    
+
     return ethers.concat([prefix1, prefix2, implPadded, suffix]);
 }
 
@@ -46,15 +47,17 @@ export function minimalProxyInitCode(implementation: string): string {
  * @param implementation Implementation contract address
  * @param creator Creator address
  * @param token Token address
+ * @param nonce Nonce for multiple pools per creator/token pair
  * @returns Predicted pool address and salt
  */
 export function predictPoolAddress(
     factory: string,
     implementation: string,
     creator: string,
-    token: string
+    token: string,
+    nonce: number
 ): { predicted: string; salt: string } {
-    const salt = computeSalt(creator, token);
+    const salt = computeSalt(creator, token, nonce);
     const initCodeHash = ethers.keccak256(minimalProxyInitCode(implementation));
     const predicted = ethers.getCreate2Address(factory, salt, initCodeHash);
     return { predicted, salt };
@@ -146,17 +149,21 @@ export async function validatePrediction(
     creator: string,
     token: string
 ): Promise<void> {
+    // Get current nonce from contract
+    const nonce = await factoryContract.poolNonce(creator, token);
+
     // TypeScript prediction using exact interface
     const { predicted: tsPredicted, salt: tsSalt } = predictPoolAddress(
         await factoryContract.getAddress(),
         implementationAddress,
         creator,
-        token
+        token,
+        Number(nonce)
     );
-    
-    // Solidity prediction via contract
+
+    // Solidity prediction via contract (uses current nonce internally)
     const [solidityPredicted, soliditySalt] = await factoryContract.predictPoolAddress(creator, token);
-    
+
     // CRITICAL: Both predictions AND salts must match exactly
     if (tsPredicted.toLowerCase() !== solidityPredicted.toLowerCase()) {
         throw new Error(`Address mismatch: TS=${tsPredicted} vs Solidity=${solidityPredicted}`);
@@ -164,8 +171,8 @@ export async function validatePrediction(
     if (tsSalt.toLowerCase() !== soliditySalt.toLowerCase()) {
         throw new Error(`Salt mismatch: TS=${tsSalt} vs Solidity=${soliditySalt}`);
     }
-    
-    console.log(`✅ CREATE2 prediction validated: ${tsPredicted}`);
+
+    console.log(`✅ CREATE2 prediction validated: ${tsPredicted} (nonce: ${nonce})`);
 }
 
 /**
@@ -179,23 +186,23 @@ export async function deploymentValidation(
     implementationAddress: string
 ): Promise<void> {
     console.log("🧪 Running CREATE2 deployment validation...");
-    
+
     // Test multiple creator/token combinations
     const testCases = [
-        { 
-            creator: "0x1234567890123456789012345678901234567890", 
+        {
+            creator: "0x1234567890123456789012345678901234567890",
             token: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" // USDC Base
         },
-        { 
-            creator: "0x5678901234567890123456789012345678901234", 
+        {
+            creator: "0x5678901234567890123456789012345678901234",
             token: "0x4200000000000000000000000000000000000006"  // WETH Base
         }
     ];
-    
+
     for (const { creator, token } of testCases) {
         await validatePrediction(factoryContract, implementationAddress, creator, token);
     }
-    
+
     console.log("✅ All CREATE2 predictions validated successfully");
 }
 
@@ -241,7 +248,7 @@ export async function generateBatchClaims(
     chainId: number
 ): Promise<ClaimData[]> {
     const signedClaims: ClaimData[] = [];
-    
+
     for (const claim of claims) {
         const signature = await signClaim(
             signer,
@@ -251,12 +258,12 @@ export async function generateBatchClaims(
             claim.deadline,
             chainId
         );
-        
+
         signedClaims.push({
             ...claim,
             signature
         });
     }
-    
+
     return signedClaims;
 }

@@ -34,16 +34,22 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     address public immutable guardian;
 
     // ----------- Publisher Management ----------- //
-    address public publisher;        // Current active publisher
-    address public oldPublisher;     // Previous publisher during grace period
-    uint256 public graceEndTime;     // When grace period for old publisher ends
+    address public publisher; // Current active publisher
+    address public oldPublisher; // Previous publisher during grace period
+    uint256 public graceEndTime; // When grace period for old publisher ends
 
     // ----------- Governance ----------- //
     mapping(address => bool) public allowedTokens; // On-chain token allow-list
-    mapping(address => mapping(address => bool)) public poolExists; // creator -> token -> exists
+    mapping(address => mapping(address => uint256)) public poolNonce; // creator -> token -> nonce
 
     // ----------- Events ----------- //
-    event PoolCreated(address indexed creator, address indexed pool, address indexed token, bytes32 salt);
+    event PoolCreated(
+        address indexed creator,
+        address indexed pool,
+        address indexed token,
+        bytes32 salt,
+        uint256 nonce
+    );
     event TokenAllowedUpdated(address indexed token, bool allowed);
     event PublisherRotationInitiated(address indexed oldPublisher, address indexed newPublisher, uint256 graceEndTime);
     event PublisherRotationCancelled(address indexed restoredPublisher, address indexed cancelledPublisher);
@@ -109,23 +115,23 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      */
     function createPool(address token) external whenNotPaused nonReentrant returns (address pool) {
         if (!allowedTokens[token]) revert InvalidParameter("token");
-        if (poolExists[msg.sender][token]) revert AlreadyExists("pool");
 
         // Use centralized salt generation - deterministic, no race conditions
-        bytes32 salt = _computeSalt(msg.sender, token);
+        uint256 nonce = poolNonce[msg.sender][token];
+        bytes32 salt = _computeSalt(msg.sender, token, nonce);
         pool = Clones.cloneDeterministic(poolImplementation, salt);
 
-        // Mark as existing to prevent duplicates
-        poolExists[msg.sender][token] = true;
-
-        // Verify prediction matches reality (sanity check)
-        (address predicted, ) = this.predictPoolAddress(msg.sender, token);
+        // Verify prediction matches reality (sanity check) BEFORE incrementing nonce
+        (address predicted, ) = predictPoolAddressWithNonce(msg.sender, token, nonce);
         if (pool != predicted) revert SecurityViolation("create2");
+
+        // Increment nonce for the next creation
+        poolNonce[msg.sender][token]++;
 
         // Initialize the clone with factory reference (centralized governance)
         IRewardPoolImplementation(pool).initialize(token, msg.sender, platformTreasury, address(this));
 
-        emit PoolCreated(msg.sender, pool, token, salt);
+        emit PoolCreated(msg.sender, pool, token, salt, nonce);
     }
 
     /**
@@ -135,8 +141,29 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      * @return predicted Predicted pool address
      * @return salt Salt used for CREATE2
      */
-    function predictPoolAddress(address creator, address token) external view returns (address predicted, bytes32 salt) {
-        salt = _computeSalt(creator, token);
+    function predictPoolAddress(
+        address creator,
+        address token
+    ) external view returns (address predicted, bytes32 salt) {
+        uint256 nonce = poolNonce[creator][token];
+        salt = _computeSalt(creator, token, nonce);
+        predicted = Clones.predictDeterministicAddress(poolImplementation, salt, address(this));
+    }
+
+    /**
+     * @notice Predict pool address with a specific nonce (for tests and internal checks)
+     * @param creator Creator address
+     * @param token Token address
+     * @param nonce Nonce to use for prediction
+     * @return predicted Predicted pool address
+     * @return salt Salt used for CREATE2
+     */
+    function predictPoolAddressWithNonce(
+        address creator,
+        address token,
+        uint256 nonce
+    ) public view returns (address predicted, bytes32 salt) {
+        salt = _computeSalt(creator, token, nonce);
         predicted = Clones.predictDeterministicAddress(poolImplementation, salt, address(this));
     }
 
@@ -147,9 +174,9 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      * @param token Token address
      * @return Salt for CREATE2
      */
-    function _computeSalt(address creator, address token) internal pure returns (bytes32) {
+    function _computeSalt(address creator, address token, uint256 nonce) internal pure returns (bytes32) {
         // EXACT ABI encoding: deterministic by creator + token pair
-        return keccak256(abi.encode(creator, token));
+        return keccak256(abi.encode(creator, token, nonce));
     }
 
     // ----------- Publisher Management ----------- //
@@ -181,8 +208,8 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         if (graceEndTime > block.timestamp) revert AlreadyExists("rotation");
 
         // IMMEDIATE transition - no pending period
-        oldPublisher = publisher;          // Store current for grace period
-        publisher = newPublisher;          // IMMEDIATE activation
+        oldPublisher = publisher; // Store current for grace period
+        publisher = newPublisher; // IMMEDIATE activation
         graceEndTime = block.timestamp + PUBLISHER_GRACE_PERIOD; // 7 days overlap
 
         emit PublisherRotationInitiated(oldPublisher, newPublisher, graceEndTime);
@@ -197,12 +224,12 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         if (block.timestamp >= graceEndTime) revert SecurityViolation("grace_period");
 
         // Capture current state BEFORE modification for accurate event emission
-        address cancelledPublisher = publisher;    // The publisher being cancelled (new one)
-        address restoredPublisher = oldPublisher;  // The publisher being restored (old one)
+        address cancelledPublisher = publisher; // The publisher being cancelled (new one)
+        address restoredPublisher = oldPublisher; // The publisher being restored (old one)
 
-        publisher = oldPublisher;          // Restore old publisher
-        oldPublisher = address(0);         // Clear old
-        graceEndTime = 0;                  // End grace period immediately
+        publisher = oldPublisher; // Restore old publisher
+        oldPublisher = address(0); // Clear old
+        graceEndTime = 0; // End grace period immediately
 
         // EVENT REFLECTS ACTUAL STATE: restored (old) and cancelled (new)
         emit PublisherRotationCancelled(restoredPublisher, cancelledPublisher);
@@ -229,10 +256,5 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
  * @notice Interface for reward pool implementation initialization
  */
 interface IRewardPoolImplementation {
-    function initialize(
-        address token,
-        address creator,
-        address platformTreasury,
-        address factory
-    ) external;
+    function initialize(address token, address creator, address platformTreasury, address factory) external;
 }

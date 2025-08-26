@@ -23,10 +23,10 @@ contract ClaimRouter is ReentrancyGuard {
     // ----------- Structs ----------- //
     struct ClaimData {
         address vault;
-        address account;          // Account to pay (verified in signature)
+        address account; // Account to pay (verified in signature)
         uint256 cumulativeAmount; // Cumulative pattern
         uint256 deadline;
-        bytes signature;          // Publisher's EIP-712
+        bytes signature; // Publisher's EIP-712
     }
 
     // ----------- Modifiers ----------- //
@@ -102,14 +102,15 @@ contract ClaimRouter is ReentrancyGuard {
                 emit ClaimFailed(claims[i].vault, claims[i].account, "Invalid vault or factory call failed");
                 continue;
             }
-
             // Process claim after factory validation
-            try IVaultClaim(claims[i].vault).payWithSig(
-                claims[i].account,
-                claims[i].cumulativeAmount,
-                claims[i].deadline,
-                claims[i].signature
-            ) returns (uint256 gross, uint256 fee, uint256 net) {
+            try
+                IVaultClaim(claims[i].vault).payWithSig(
+                    claims[i].account,
+                    claims[i].cumulativeAmount,
+                    claims[i].deadline,
+                    claims[i].signature
+                )
+            returns (uint256 gross, uint256 fee, uint256 net) {
                 successful++;
                 totalGross += gross;
                 totalFees += fee;
@@ -145,7 +146,14 @@ contract ClaimRouter is ReentrancyGuard {
         uint256 totalNet,
         uint256 timestamp
     );
-    event ClaimSucceeded(address indexed vault, address indexed account, address indexed factory, uint256 gross, uint256 fee, uint256 net);
+    event ClaimSucceeded(
+        address indexed vault,
+        address indexed account,
+        address indexed factory,
+        uint256 gross,
+        uint256 fee,
+        uint256 net
+    );
     event ClaimFailed(address indexed vault, address indexed account, string reason);
     event FactoryApprovalUpdated(address indexed factory, bool approved);
     event MaxBatchSizeUpdated(uint256 oldSize, uint256 newSize);
@@ -156,6 +164,11 @@ contract ClaimRouter is ReentrancyGuard {
  * @notice Interface for vault claim operations
  */
 interface IVaultClaim {
-    function payWithSig(address account, uint256 cumulativeAmount, uint256 deadline, bytes calldata signature) external returns (uint256 gross, uint256 fee, uint256 net);
+    function payWithSig(
+        address account,
+        uint256 cumulativeAmount,
+        uint256 deadline,
+        bytes calldata signature
+    ) external returns (uint256 gross, uint256 fee, uint256 net);
     function getFactory() external view returns (address factory);
 }

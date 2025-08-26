@@ -18,7 +18,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  * @custom:security-contact security@clones.ai
  * @author CLONES
  */
-contract RewardPoolImplementation is 
+contract RewardPoolImplementation is
     Initializable,
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
@@ -42,13 +42,13 @@ contract RewardPoolImplementation is
     // ----------- State Variables ----------- //
     address public token;
     address public platformTreasury;
-    address public factory;          // Reference to factory for centralized authority
+    address public factory; // Reference to factory for centralized authority
 
     // Cumulative claim tracking
     mapping(address => uint256) public alreadyClaimed; // Cumulative amount already claimed
     mapping(address => uint256) public alreadyFeePaid; // Cumulative fees already paid by account
     uint256 public globalAlreadyClaimed; // Total amount already claimed by all users
-    uint256 public lastClaimTimestamp;   // Last successful claim timestamp
+    uint256 public lastClaimTimestamp; // Last successful claim timestamp
 
     // Emergency sweep state
     uint256 public emergencyNoticeTimestamp; // On-chain notice timestamp
@@ -180,23 +180,24 @@ contract RewardPoolImplementation is
         if (cumulativeAmount <= alreadyClaimed[account]) revert AlreadyExists("claim");
 
         // EIP-712 signature verification (uses OZ EIP712 inheritance)
-        bytes32 structHash = keccak256(abi.encode(
-            keccak256("Claim(address account,uint256 cumulativeAmount,uint256 deadline)"),
-            account,
-            cumulativeAmount,
-            deadline
-        ));
+        bytes32 structHash = keccak256(
+            abi.encode(
+                keccak256("Claim(address account,uint256 cumulativeAmount,uint256 deadline)"),
+                account,
+                cumulativeAmount,
+                deadline
+            )
+        );
         bytes32 digest = _hashTypedDataV4(structHash); // OZ EIP712 handles domain + chainId
         address signer = ECDSA.recover(digest, signature);
 
         // Centralized publisher validation via factory authority
         // SCALABLE: One factory update affects ALL vaults (no per-vault rotation)
         {
-            (address currentPublisher, address oldPublisher, uint256 graceEndTime) = IRewardPoolFactory(factory).getPublisherInfo();
-            bool validSigner = (signer == currentPublisher) || 
-                              (graceEndTime > 0 && 
-                               block.timestamp < graceEndTime && 
-                               signer == oldPublisher);
+            (address currentPublisher, address oldPublisher, uint256 graceEndTime) = IRewardPoolFactory(factory)
+                .getPublisherInfo();
+            bool validSigner = (signer == currentPublisher) ||
+                (graceEndTime > 0 && block.timestamp < graceEndTime && signer == oldPublisher);
             if (!validSigner) revert SecurityViolation("signature");
         }
 
@@ -208,9 +209,9 @@ contract RewardPoolImplementation is
             uint256 cumulativeFeeDue = (cumulativeAmount * FEE_BPS) / 10000;
             fee = cumulativeFeeDue - alreadyFeePaid[account]; // feeForThisClaim
             net = gross - fee;
-            
+
             if (IERC20(token).balanceOf(address(this)) < gross) revert InvalidParameter("balance");
-            
+
             // Effects before interactions
             alreadyClaimed[account] = cumulativeAmount;
             alreadyFeePaid[account] = cumulativeFeeDue; // Track cumulative fees paid
@@ -249,7 +250,8 @@ contract RewardPoolImplementation is
     function initiateEmergencySweepNotice(address to, string calldata justification) external onlyFactoryTimelock {
         if (!paused()) revert SecurityViolation("pause_required");
         if (to == address(0)) revert InvalidParameter("recipient");
-        if (block.timestamp < lastClaimTimestamp + EMERGENCY_SWEEP_GRACE_PERIOD) revert SecurityViolation("grace_period");
+        if (block.timestamp < lastClaimTimestamp + EMERGENCY_SWEEP_GRACE_PERIOD)
+            revert SecurityViolation("grace_period");
 
         emergencyNoticeTimestamp = block.timestamp;
 
@@ -263,7 +265,8 @@ contract RewardPoolImplementation is
      */
     function emergencySweepAll(address to) external onlyFactoryTimelock {
         if (emergencyNoticeTimestamp == 0) revert InvalidParameter("notice_required");
-        if (block.timestamp < emergencyNoticeTimestamp + EMERGENCY_NOTICE_PERIOD) revert InvalidParameter("notice_period");
+        if (block.timestamp < emergencyNoticeTimestamp + EMERGENCY_NOTICE_PERIOD)
+            revert InvalidParameter("notice_period");
 
         // CRITICAL: This bypasses ALL safety checks including untracked allocations
         uint256 balance = IERC20(token).balanceOf(address(this));
@@ -307,19 +310,14 @@ contract RewardPoolImplementation is
      * @return bool Whether interface is supported
      */
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165Upgradeable) returns (bool) {
-        return interfaceId == type(IVaultClaim).interfaceId || 
-               super.supportsInterface(interfaceId);
+        return interfaceId == type(IVaultClaim).interfaceId || super.supportsInterface(interfaceId);
     }
 
     // ----------- Events ----------- //
     event Funded(address indexed funder, address indexed token, uint256 amount);
 
     // Optimized event for massive claims volume (2 indexed params)
-    event ClaimedMinimal(
-        address indexed account,
-        address indexed token,
-        uint256 cumulativeAmount
-    );
+    event ClaimedMinimal(address indexed account, address indexed token, uint256 cumulativeAmount);
 
     event PlatformTreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event EmergencySweepNoticeInitiated(address indexed to, string justification, uint256 executionTimestamp);
@@ -343,6 +341,11 @@ interface IRewardPoolFactory {
  * @dev Version: 1.0.0 - Clones Ecosystem Internal Standard ONLY
  */
 interface IVaultClaim {
-    function payWithSig(address account, uint256 cumulativeAmount, uint256 deadline, bytes calldata signature) external returns (uint256 gross, uint256 fee, uint256 net);
+    function payWithSig(
+        address account,
+        uint256 cumulativeAmount,
+        uint256 deadline,
+        bytes calldata signature
+    ) external returns (uint256 gross, uint256 fee, uint256 net);
     function getFactory() external view returns (address factory);
 }
