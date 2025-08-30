@@ -25,7 +25,6 @@ contract ClaimRouter is ReentrancyGuard {
         address vault;
         address account; // Account to pay (verified in signature)
         uint256 cumulativeAmount; // Cumulative pattern
-        uint256 deadline;
         bytes signature; // Publisher's EIP-712
     }
 
@@ -107,7 +106,6 @@ contract ClaimRouter is ReentrancyGuard {
                 IVaultClaim(claims[i].vault).payWithSig(
                     claims[i].account,
                     claims[i].cumulativeAmount,
-                    claims[i].deadline,
                     claims[i].signature
                 )
             returns (uint256 gross, uint256 fee, uint256 net) {
@@ -123,8 +121,6 @@ contract ClaimRouter is ReentrancyGuard {
                 // - "Invalid signature" (bad EIP-712 signature)
                 // - "Insufficient vault balance" (vault underfunded)
                 // - "Already claimed" (cumulative amount ≤ already claimed)
-                // - "Signature expired" (deadline < block.timestamp)
-                // - "Deadline too far in future" (deadline > block.timestamp + 7 days)
                 emit ClaimFailed(claims[i].vault, claims[i].account, reason);
             } catch {
                 failed++;
@@ -167,7 +163,6 @@ interface IVaultClaim {
     function payWithSig(
         address account,
         uint256 cumulativeAmount,
-        uint256 deadline,
         bytes calldata signature
     ) external returns (uint256 gross, uint256 fee, uint256 net);
     function getFactory() external view returns (address factory);

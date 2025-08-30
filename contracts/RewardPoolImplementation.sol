@@ -10,6 +10,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {IRewardPoolImplementation} from "./RewardPoolFactory.sol";
+import {IVaultClaim} from "./ClaimRouter.sol";
 
 /**
  * @title RewardPoolImplementation
@@ -23,7 +25,9 @@ contract RewardPoolImplementation is
     PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     EIP712Upgradeable,
-    ERC165Upgradeable
+    ERC165Upgradeable,
+    IRewardPoolImplementation,
+    IVaultClaim
 {
     using SafeERC20 for IERC20;
 
@@ -37,7 +41,6 @@ contract RewardPoolImplementation is
     uint16 public constant FEE_BPS = 1000; // 10% fixed globally
     uint256 public constant PUBLISHER_GRACE_PERIOD = 7 days;
     uint256 public constant EMERGENCY_SWEEP_GRACE_PERIOD = 180 days;
-    uint256 public constant MAX_DEADLINE_WINDOW = 7 days; // Maximum deadline window
 
     // ----------- State Variables ----------- //
     address public token;
@@ -74,20 +77,20 @@ contract RewardPoolImplementation is
     // ----------- Initialization ----------- //
     /**
      * @notice Initialize the vault clone
-     * @param _token Token address for rewards
-     * @param _creator Creator address (no special role after init)
-     * @param _platformTreasury Treasury address for fees
-     * @param _factory Factory address for governance
+     * @param token_ Token address for rewards
+     * @param creator_ Creator address (no special role after init)
+     * @param platformTreasury_ Treasury address for fees
+     * @param factory_ Factory address for governance
      */
     function initialize(
-        address _token,
-        address _creator,
-        address _platformTreasury,
-        address _factory
+        address token_,
+        address creator_,
+        address platformTreasury_,
+        address factory_
     ) external initializer {
-        if (_token == address(0)) revert InvalidParameter("token");
-        if (_platformTreasury == address(0)) revert InvalidParameter("treasury");
-        if (_factory == address(0)) revert InvalidParameter("factory");
+        if (token_ == address(0)) revert InvalidParameter("token");
+        if (platformTreasury_ == address(0)) revert InvalidParameter("treasury");
+        if (factory_ == address(0)) revert InvalidParameter("factory");
 
         // Initialize inherited contracts (NO AccessControl)
         __Pausable_init();
@@ -95,9 +98,9 @@ contract RewardPoolImplementation is
         __EIP712_init("FactoryVault", "1");
 
         // Set contract state
-        token = _token;
-        platformTreasury = _platformTreasury;
-        factory = _factory;
+        token = token_;
+        platformTreasury = platformTreasury_;
+        factory = factory_;
         lastClaimTimestamp = block.timestamp;
 
         // Creator gets no special roles (factory creates pools, not direct admin)
@@ -162,7 +165,6 @@ contract RewardPoolImplementation is
      * @notice Pay rewards with EIP-712 signature (cumulative pattern)
      * @param account Account to pay (≠ msg.sender with Router)
      * @param cumulativeAmount Total cumulative amount due
-     * @param deadline Signature deadline
      * @param signature Publisher's EIP-712 signature
      * @return gross Total amount claimed this transaction
      * @return fee Platform fee deducted
@@ -171,21 +173,16 @@ contract RewardPoolImplementation is
     function payWithSig(
         address account,
         uint256 cumulativeAmount,
-        uint256 deadline,
         bytes calldata signature
     ) external nonReentrant whenNotPaused returns (uint256 gross, uint256 fee, uint256 net) {
-        // Deadline validation: must not be expired and must not be too far in future
-        if (deadline < block.timestamp) revert SecurityViolation("deadline");
-        if (deadline > block.timestamp + MAX_DEADLINE_WINDOW) revert InvalidParameter("deadline");
         if (cumulativeAmount <= alreadyClaimed[account]) revert AlreadyExists("claim");
 
         // EIP-712 signature verification (uses OZ EIP712 inheritance)
         bytes32 structHash = keccak256(
             abi.encode(
-                keccak256("Claim(address account,uint256 cumulativeAmount,uint256 deadline)"),
+                keccak256("Claim(address account,uint256 cumulativeAmount)"),
                 account,
-                cumulativeAmount,
-                deadline
+                cumulativeAmount
             )
         );
         bytes32 digest = _hashTypedDataV4(structHash); // OZ EIP712 handles domain + chainId
@@ -335,17 +332,3 @@ interface IRewardPoolFactory {
     function guardian() external view returns (address);
 }
 
-/**
- * @title IVaultClaim
- * @notice Internal Clones ecosystem interface for vault interactions
- * @dev Version: 1.0.0 - Clones Ecosystem Internal Standard ONLY
- */
-interface IVaultClaim {
-    function payWithSig(
-        address account,
-        uint256 cumulativeAmount,
-        uint256 deadline,
-        bytes calldata signature
-    ) external returns (uint256 gross, uint256 fee, uint256 net);
-    function getFactory() external view returns (address factory);
-}

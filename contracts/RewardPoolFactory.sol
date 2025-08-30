@@ -5,6 +5,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title RewardPoolFactory
@@ -49,6 +50,14 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         address indexed token,
         bytes32 salt,
         uint256 nonce
+    );
+    event PoolCreatedAndFunded(
+        address indexed creator,
+        address indexed pool,
+        address indexed token,
+        bytes32 salt,
+        uint256 nonce,
+        uint256 fundingAmount
     );
     event TokenAllowedUpdated(address indexed token, bool allowed);
     event PublisherRotationInitiated(address indexed oldPublisher, address indexed newPublisher, uint256 graceEndTime);
@@ -114,6 +123,38 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      * @return pool Address of the created pool
      */
     function createPool(address token) external whenNotPaused nonReentrant returns (address pool) {
+        pool = _createPool(token, 0);
+    }
+
+    /**
+     * @notice Create and fund a reward pool atomically using EIP-1167 minimal proxy pattern
+     * @dev Combines pool creation and funding in a single transaction for optimal UX and gas efficiency
+     * @param token Token address for rewards (must be in allow-list)
+     * @param fundingAmount Amount to fund the pool (requires prior allowance)
+     * @return pool Address of the created and funded pool
+     */
+    function createAndFundPool(
+        address token,
+        uint256 fundingAmount
+    ) external whenNotPaused nonReentrant returns (address pool) {
+        if (!allowedTokens[token]) revert InvalidParameter("token");
+        if (fundingAmount == 0) revert InvalidParameter("amount");
+
+        // Validate allowance before proceeding
+        uint256 allowance = IERC20(token).allowance(msg.sender, address(this));
+        if (allowance < fundingAmount) revert SecurityViolation("insufficient_allowance");
+
+        pool = _createPool(token, fundingAmount);
+    }
+
+    /**
+     * @notice Internal pool creation logic shared by both public functions
+     * @dev Handles pool creation with optional funding
+     * @param token Token address for rewards (must be in allow-list)
+     * @param fundingAmount Amount to fund (0 for no funding)
+     * @return pool Address of the created pool
+     */
+    function _createPool(address token, uint256 fundingAmount) internal returns (address pool) {
         if (!allowedTokens[token]) revert InvalidParameter("token");
 
         // Use centralized salt generation - deterministic, no race conditions
@@ -126,12 +167,20 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         if (pool != predicted) revert SecurityViolation("create2");
 
         // Increment nonce for the next creation
-        poolNonce[msg.sender][token]++;
+        ++poolNonce[msg.sender][token];
 
-        // Initialize the clone with factory reference (centralized governance)
+        // Initialize the clone with factory reference
         IRewardPoolImplementation(pool).initialize(token, msg.sender, platformTreasury, address(this));
 
-        emit PoolCreated(msg.sender, pool, token, salt, nonce);
+        // Fund pool if amount specified
+        if (fundingAmount > 0) {
+            bool success = IERC20(token).transferFrom(msg.sender, pool, fundingAmount);
+            if (!success) revert SecurityViolation("token_transfer");
+
+            emit PoolCreatedAndFunded(msg.sender, pool, token, salt, nonce, fundingAmount);
+        } else {
+            emit PoolCreated(msg.sender, pool, token, salt, nonce);
+        }
     }
 
     /**

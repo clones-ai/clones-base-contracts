@@ -8,9 +8,9 @@ import {IAggregatorV3Interface} from "contracts/interfaces/IAggregatorV3Interfac
 /// @dev Allows setting the sequencer status for testing purposes.
 contract MockSequencerUptimeFeed is IAggregatorV3Interface {
     int256 private _answer = 0; // 0 = up, 1 = down
-    uint8 private _decimals = 0;
-    string private _description = "Mock Sequencer Uptime Feed";
-    uint256 private _version = 1;
+    uint8 private constant DECIMALS = 0;
+    string private constant DESCRIPTION = "Mock Sequencer Uptime Feed";
+    uint256 private constant VERSION = 1;
 
     /// @notice Sets the current answer of the feed.
     /// @param newAnswer The new status (0 for up, 1 for down).
@@ -19,15 +19,15 @@ contract MockSequencerUptimeFeed is IAggregatorV3Interface {
     }
 
     function decimals() external view override returns (uint8) {
-        return _decimals;
+        return DECIMALS;
     }
 
     function description() external view override returns (string memory) {
-        return _description;
+        return DESCRIPTION;
     }
 
     function version() external view override returns (uint256) {
-        return _version;
+        return VERSION;
     }
 
     function getRoundData(
