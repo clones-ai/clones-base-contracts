@@ -48,12 +48,15 @@ contract RewardPoolImplementation is
 
     uint256 private constant FEE_DENOMINATOR = 10000;
 
+    /// @notice EIP-712 type hash for Claim struct (computed once for gas efficiency)
+    bytes32 private constant CLAIM_TYPEHASH = keccak256("Claim(address account,uint256 cumulativeAmount)");
+
     // ----------- State Variables ----------- //
     struct PoolConfig {
         address token; // 20 bytes
         address platformTreasury; // 20 bytes
         address factory; // 20 bytes - overflow to slot 1
-        uint64 lastClaimTimestamp; // 8 bytes - fits in slot 1
+        uint256 lastClaimTimestamp; // Full uint256 to prevent 2106 overflow
     }
     /// @notice Pool configuration struct containing token, treasury, factory addresses and timestamp
     PoolConfig public poolConfig;
@@ -112,7 +115,7 @@ contract RewardPoolImplementation is
             token: token_,
             platformTreasury: platformTreasury_,
             factory: factory_,
-            lastClaimTimestamp: uint64(block.timestamp)
+            lastClaimTimestamp: block.timestamp
         });
 
         // Creator gets no special roles (factory creates pools, not direct admin)
@@ -192,8 +195,7 @@ contract RewardPoolImplementation is
         if (cumulativeAmount <= alreadyClaimed[account]) revert AlreadyExists("claim");
 
         // EIP-712 signature verification (uses OZ EIP712 inheritance)
-        bytes32 typeHash = keccak256("Claim(address account,uint256 cumulativeAmount)");
-        bytes32 structHash = keccak256(abi.encode(typeHash, account, cumulativeAmount));
+        bytes32 structHash = keccak256(abi.encode(CLAIM_TYPEHASH, account, cumulativeAmount));
         bytes32 digest = _hashTypedDataV4(structHash); // OZ EIP712 handles domain + chainId
         address signer = ECDSA.recover(digest, signature);
 
@@ -224,7 +226,7 @@ contract RewardPoolImplementation is
         }
 
         globalAlreadyClaimed += gross;
-        poolConfig.lastClaimTimestamp = uint64(block.timestamp);
+        poolConfig.lastClaimTimestamp = block.timestamp;
 
         // Interactions: transfer to account FIRST, then treasury for atomicity
         // If account transfer fails, treasury doesn't get fee (prevents inconsistent state)
