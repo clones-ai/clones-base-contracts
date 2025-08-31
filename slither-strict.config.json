@@ -1,0 +1,15 @@
+{
+    "detectors_to_exclude": "assembly,pragma",
+    "detectors_to_run": "reentrancy-eth,reentrancy-no-eth,reentrancy-benign,timestamp,tx-origin,suicidal,arbitrary-send,controlled-delegatecall,uninitialized-state,uninitialized-storage,uninitialized-local,unused-return,incorrect-equality,dangerous-strict-equalities,locked-ether,calls-loop,multiple-constructors,name-reused,public-mappings-nested,rtlo,shadowing-state,shadowing-local,shadowing-builtin,shadowing-abstract,state-variable-not-declared,unused-state,costly-loop,dead-code,reentrancy-unlimited-gas,similar-names,too-many-digits,constable-states,external-function,immutable-states,var-read-using-this",
+    "filter_paths": "node_modules,test/mocks",
+    "exclude_informational": false,
+    "exclude_low": false,
+    "exclude_medium": false,
+    "exclude_high": false,
+    "exclude_optimization": false,
+    "json": "slither-strict-report.json",
+    "sarif": "slither-strict-report.sarif",
+    "markdown": "slither-strict-report.md",
+    "show_ignored_findings": true,
+    "compile_force_framework": "hardhat"
+}

@@ -1,0 +1,29 @@
+{
+  "network": "baseSepolia",
+  "chainId": 84532,
+  "timestamp": "2025-08-29T20:23:36.361Z",
+  "contracts": {
+    "implementation": "0x92928388376C79957ce80c62d1b66d806058e491",
+    "factory": "0x94506B0eCbA44CEB2833452306E5031799Aa305c",
+    "claimRouter": "0xC4c9e81c11872E65245f77A0befc5223339Ae71C",
+    "tokens": {
+      "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "weth": "0x4200000000000000000000000000000000000006",
+      "clones": "0x15eB86c7E54B350bf936d916Df33AEF697202E29"
+    },
+    "testPools": {
+      "usdcPool": "0x2641F49DD0bd41a15D6987549561Ca966C5de727"
+    }
+  },
+  "config": {
+    "treasury": "0x88b61192CdfCED65e969BD58fd37D48498dd69DE",
+    "timelock": "0x88b61192CdfCED65e969BD58fd37D48498dd69DE",
+    "guardian": "0x88b61192CdfCED65e969BD58fd37D48498dd69DE",
+    "publisher": "0x88b61192CdfCED65e969BD58fd37D48498dd69DE"
+  },
+  "verification": {
+    "implementation": "npx hardhat verify --network baseSepolia 0x92928388376C79957ce80c62d1b66d806058e491",
+    "factory": "npx hardhat verify --network baseSepolia 0x94506B0eCbA44CEB2833452306E5031799Aa305c \"0x92928388376C79957ce80c62d1b66d806058e491\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\"",
+    "claimRouter": "npx hardhat verify --network baseSepolia 0xC4c9e81c11872E65245f77A0befc5223339Ae71C \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\""
+  }
+}

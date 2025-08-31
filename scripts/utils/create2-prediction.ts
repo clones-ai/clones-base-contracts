@@ -216,7 +216,8 @@ export const NETWORK_CONFIG = {
         explorer: "https://sepolia.basescan.org",
         tokens: {
             usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-            weth: "0x4200000000000000000000000000000000000006"
+            weth: "0x4200000000000000000000000000000000000006",
+            clones: "0x15eB86c7E54B350bf936d916Df33AEF697202E29",
         }
     },
     baseMainnet: {

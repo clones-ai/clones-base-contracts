@@ -1,0 +1,21 @@
+{
+    "detectors_to_exclude": "assembly,pragma,solc-version",
+    "detectors_to_run": "all",
+    "filter_paths": "node_modules",
+    "exclude_informational": false,
+    "exclude_low": false,
+    "exclude_medium": false,
+    "exclude_high": false,
+    "exclude_optimization": false,
+    "disable_color": false,
+    "json": "slither-report.json",
+    "sarif": "slither-report.sarif",
+    "zip": "slither-artifacts.zip",
+    "checklist": true,
+    "markdown": "slither-report.md",
+    "show_ignored_findings": true,
+    "compile_force_framework": "hardhat",
+    "hardhat_ignore_compile": false,
+    "hardhat_cache_directory": "./cache",
+    "hardhat_artifacts_directory": "./artifacts"
+}

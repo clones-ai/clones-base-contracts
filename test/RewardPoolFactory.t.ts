@@ -332,7 +332,100 @@ describe("RewardPoolFactory", function () {
         });
     });
 
+    describe("Create and Fund Pool", function () {
+        beforeEach(async function () {
+            // Mint tokens to creator for funding
+            await testToken.mint(creator.address, ethers.parseEther("1000"));
+        });
+
+        it("Should create and fund pool atomically", async function () {
+            const fundingAmount = ethers.parseEther("100");
+
+            // Approve tokens to factory
+            await testToken.connect(creator).approve(await factory.getAddress(), fundingAmount);
+
+            const nonce = await factory.poolNonce(creator.address, await testToken.getAddress());
+            const [predicted, salt] = await factory.predictPoolAddress(creator.address, await testToken.getAddress());
+
+            await expect(factory.connect(creator).createAndFundPool(await testToken.getAddress(), fundingAmount))
+                .to.emit(factory, "PoolCreatedAndFunded")
+                .withArgs(creator.address, predicted, await testToken.getAddress(), salt, nonce, fundingAmount);
+
+            // Verify pool balance
+            expect(await testToken.balanceOf(predicted)).to.equal(fundingAmount);
+            expect(await factory.poolNonce(creator.address, await testToken.getAddress())).to.equal(nonce + 1n);
+        });
+
+        it("Should reject create and fund with zero amount", async function () {
+            await expect(factory.connect(creator).createAndFundPool(await testToken.getAddress(), 0))
+                .to.be.revertedWithCustomError(factory, "InvalidParameter")
+                .withArgs("amount");
+        });
+
+        it("Should reject create and fund with insufficient allowance", async function () {
+            const fundingAmount = ethers.parseEther("100");
+
+            // Don't approve enough tokens
+            await testToken.connect(creator).approve(await factory.getAddress(), ethers.parseEther("50"));
+
+            await expect(factory.connect(creator).createAndFundPool(await testToken.getAddress(), fundingAmount))
+                .to.be.revertedWithCustomError(factory, "SecurityViolation")
+                .withArgs("insufficient_allowance");
+        });
+
+        it("Should reject create and fund with non-allowed tokens", async function () {
+            const TestToken2Factory = await ethers.getContractFactory("TestToken");
+            const testToken2 = await TestToken2Factory.deploy("Test2", "TEST2", 18);
+            const fundingAmount = ethers.parseEther("100");
+
+            await expect(factory.connect(creator).createAndFundPool(await testToken2.getAddress(), fundingAmount))
+                .to.be.revertedWithCustomError(factory, "InvalidParameter")
+                .withArgs("token");
+        });
+
+        it("Should succeed with fee-on-transfer tokens (pool receives less)", async function () {
+            // Test with a mock token that fails transfers
+            const FeeOnTransferTokenFactory = await ethers.getContractFactory("FeeOnTransferToken");
+            const feeToken = await FeeOnTransferTokenFactory.deploy("FeeToken", "FEE"); // 1% fee hardcoded
+
+            // Allow the fee token
+            await factory.connect(timelock).setTokenAllowed(await feeToken.getAddress(), true);
+
+            // Mint and approve
+            await feeToken.mint(creator.address, ethers.parseEther("1000"));
+            const fundingAmount = ethers.parseEther("100");
+            await feeToken.connect(creator).approve(await factory.getAddress(), fundingAmount);
+
+            // Should succeed but pool receives less due to fee
+            const tx = await factory.connect(creator).createAndFundPool(await feeToken.getAddress(), fundingAmount);
+            const receipt = await tx.wait();
+            
+            // Pool should exist and have balance (less than funding due to fee)
+            const factoryAddress = await factory.getAddress();
+            const createdEvent = factory.interface.parseLog(receipt!.logs.find(log => log.address === factoryAddress)!);
+            const poolAddress = createdEvent!.args.pool;
+            
+            const poolBalance = await feeToken.balanceOf(poolAddress);
+            expect(poolBalance).to.be.lessThan(fundingAmount); // Due to 1% fee
+            expect(poolBalance).to.be.greaterThan(0); // But not zero
+        });
+
+        it("Should reject create and fund when paused", async function () {
+            const fundingAmount = ethers.parseEther("100");
+            await testToken.connect(creator).approve(await factory.getAddress(), fundingAmount);
+            await factory.connect(guardian).pause();
+
+            await expect(factory.connect(creator).createAndFundPool(await testToken.getAddress(), fundingAmount))
+                .to.be.revertedWithCustomError(factory, "EnforcedPause");
+        });
+    });
+
     describe("Gas Benchmarks", function () {
+        beforeEach(async function () {
+            // Mint tokens to creator for funding tests
+            await testToken.mint(creator.address, ethers.parseEther("1000"));
+        });
+
         it("Should benchmark pool creation gas", async function () {
             const tx = await factory.connect(creator).createPool(await testToken.getAddress());
             const receipt = await tx.wait();
@@ -340,6 +433,18 @@ describe("RewardPoolFactory", function () {
             // Target: < 300k gas for pool creation (revised for actual costs)
             console.log(`Pool creation gas used: ${receipt!.gasUsed.toString()}`);
             expect(receipt!.gasUsed).to.be.lessThan(300000);
+        });
+
+        it("Should benchmark create and fund pool gas efficiency", async function () {
+            const fundingAmount = ethers.parseEther("100");
+            await testToken.connect(creator).approve(await factory.getAddress(), fundingAmount);
+
+            const tx = await factory.connect(creator).createAndFundPool(await testToken.getAddress(), fundingAmount);
+            const receipt = await tx.wait();
+
+            // Target: < 350k gas for create+fund (should be more efficient than separate operations)
+            console.log(`Create and fund gas used: ${receipt!.gasUsed.toString()}`);
+            expect(receipt!.gasUsed).to.be.lessThan(350000);
         });
     });
 });

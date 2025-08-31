@@ -20,6 +20,7 @@ import {IVaultClaim} from "./ClaimRouter.sol";
  * @custom:security-contact security@clones.ai
  * @author CLONES
  */
+// solhint-disable-next-line mark-callable-contracts
 contract RewardPoolImplementation is
     Initializable,
     PausableUpgradeable,
@@ -42,16 +43,22 @@ contract RewardPoolImplementation is
     uint256 public constant PUBLISHER_GRACE_PERIOD = 7 days;
     uint256 public constant EMERGENCY_SWEEP_GRACE_PERIOD = 180 days;
 
+    uint256 private constant FEE_DENOMINATOR = 10000;
+    uint256 private constant FEE_MULTIPLIER = FEE_BPS;
+
     // ----------- State Variables ----------- //
-    address public token;
-    address public platformTreasury;
-    address public factory; // Reference to factory for centralized authority
+    struct PoolConfig {
+        address token; // 20 bytes
+        address platformTreasury; // 20 bytes
+        address factory; // 20 bytes - overflow to slot 1
+        uint64 lastClaimTimestamp; // 8 bytes - fits in slot 1
+    }
+    PoolConfig public poolConfig;
 
     // Cumulative claim tracking
     mapping(address => uint256) public alreadyClaimed; // Cumulative amount already claimed
     mapping(address => uint256) public alreadyFeePaid; // Cumulative fees already paid by account
     uint256 public globalAlreadyClaimed; // Total amount already claimed by all users
-    uint256 public lastClaimTimestamp; // Last successful claim timestamp
 
     // Emergency sweep state
     uint256 public emergencyNoticeTimestamp; // On-chain notice timestamp
@@ -59,12 +66,12 @@ contract RewardPoolImplementation is
 
     // ----------- Modifiers ----------- //
     modifier onlyFactoryTimelock() {
-        if (msg.sender != IRewardPoolFactory(factory).timelock()) revert Unauthorized("timelock");
+        if (msg.sender != IRewardPoolFactory(poolConfig.factory).timelock()) revert Unauthorized("timelock");
         _;
     }
 
     modifier onlyFactoryGuardian() {
-        if (msg.sender != IRewardPoolFactory(factory).guardian()) revert Unauthorized("guardian");
+        if (msg.sender != IRewardPoolFactory(poolConfig.factory).guardian()) revert Unauthorized("guardian");
         _;
     }
 
@@ -78,16 +85,10 @@ contract RewardPoolImplementation is
     /**
      * @notice Initialize the vault clone
      * @param token_ Token address for rewards
-     * @param creator_ Creator address (no special role after init)
      * @param platformTreasury_ Treasury address for fees
      * @param factory_ Factory address for governance
      */
-    function initialize(
-        address token_,
-        address creator_,
-        address platformTreasury_,
-        address factory_
-    ) external initializer {
+    function initialize(address token_, address platformTreasury_, address factory_) external initializer {
         if (token_ == address(0)) revert InvalidParameter("token");
         if (platformTreasury_ == address(0)) revert InvalidParameter("treasury");
         if (factory_ == address(0)) revert InvalidParameter("factory");
@@ -98,10 +99,12 @@ contract RewardPoolImplementation is
         __EIP712_init("FactoryVault", "1");
 
         // Set contract state
-        token = token_;
-        platformTreasury = platformTreasury_;
-        factory = factory_;
-        lastClaimTimestamp = block.timestamp;
+        poolConfig = PoolConfig({
+            token: token_,
+            platformTreasury: platformTreasury_,
+            factory: factory_,
+            lastClaimTimestamp: uint64(block.timestamp)
+        });
 
         // Creator gets no special roles (factory creates pools, not direct admin)
     }
@@ -121,14 +124,15 @@ contract RewardPoolImplementation is
      */
     function _performFund(uint256 amount) internal {
         // Anti fee-on-transfer: verify actual amount received
-        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 balanceAfter = IERC20(token).balanceOf(address(this));
+        IERC20 tokenContract = IERC20(poolConfig.token);
+        uint256 balanceBefore = tokenContract.balanceOf(address(this));
+        tokenContract.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 balanceAfter = tokenContract.balanceOf(address(this));
 
         uint256 actualReceived = balanceAfter - balanceBefore;
         if (actualReceived != amount) revert SecurityViolation("token_transfer");
 
-        emit Funded(msg.sender, token, amount);
+        emit Funded(msg.sender, poolConfig.token, amount);
     }
 
     /**
@@ -147,9 +151,10 @@ contract RewardPoolImplementation is
         bytes32 s
     ) external nonReentrant whenNotPaused {
         // CRITICAL: Permit support is fragile across USDC variants - handle gracefully
-        try IERC20Permit(token).permit(msg.sender, address(this), amount, deadline, v, r, s) {
+        IERC20 tokenContract = IERC20(poolConfig.token);
+        try IERC20Permit(poolConfig.token).permit(msg.sender, address(this), amount, deadline, v, r, s) {
             // POST-CHECK: Verify allowance was actually set correctly
-            if (IERC20(token).allowance(msg.sender, address(this)) < amount) {
+            if (tokenContract.allowance(msg.sender, address(this)) < amount) {
                 revert SecurityViolation("permit");
             }
             // Permit succeeded and allowance verified, proceed with funding
@@ -179,11 +184,7 @@ contract RewardPoolImplementation is
 
         // EIP-712 signature verification (uses OZ EIP712 inheritance)
         bytes32 structHash = keccak256(
-            abi.encode(
-                keccak256("Claim(address account,uint256 cumulativeAmount)"),
-                account,
-                cumulativeAmount
-            )
+            abi.encode(keccak256("Claim(address account,uint256 cumulativeAmount)"), account, cumulativeAmount)
         );
         bytes32 digest = _hashTypedDataV4(structHash); // OZ EIP712 handles domain + chainId
         address signer = ECDSA.recover(digest, signature);
@@ -191,8 +192,9 @@ contract RewardPoolImplementation is
         // Centralized publisher validation via factory authority
         // SCALABLE: One factory update affects ALL vaults (no per-vault rotation)
         {
-            (address currentPublisher, address oldPublisher, uint256 graceEndTime) = IRewardPoolFactory(factory)
-                .getPublisherInfo();
+            (address currentPublisher, address oldPublisher, uint256 graceEndTime) = IRewardPoolFactory(
+                poolConfig.factory
+            ).getPublisherInfo();
             bool validSigner = (signer == currentPublisher) ||
                 (graceEndTime > 0 && block.timestamp < graceEndTime && signer == oldPublisher);
             if (!validSigner) revert SecurityViolation("signature");
@@ -201,13 +203,12 @@ contract RewardPoolImplementation is
         // Calculate amount to pay with cumulative fee precision
         gross = cumulativeAmount - alreadyClaimed[account]; // newAmount
 
-        // Fee calculation: cumulative precision to prevent rounding leaks
         {
-            uint256 cumulativeFeeDue = (cumulativeAmount * FEE_BPS) / 10000;
+            uint256 cumulativeFeeDue = (cumulativeAmount * FEE_MULTIPLIER) / FEE_DENOMINATOR;
             fee = cumulativeFeeDue - alreadyFeePaid[account]; // feeForThisClaim
             net = gross - fee;
 
-            if (IERC20(token).balanceOf(address(this)) < gross) revert InvalidParameter("balance");
+            if (IERC20(poolConfig.token).balanceOf(address(this)) < gross) revert InvalidParameter("balance");
 
             // Effects before interactions
             alreadyClaimed[account] = cumulativeAmount;
@@ -215,15 +216,15 @@ contract RewardPoolImplementation is
         }
 
         globalAlreadyClaimed += gross;
-        lastClaimTimestamp = block.timestamp;
+        poolConfig.lastClaimTimestamp = uint64(block.timestamp);
 
         // Interactions: transfer to account FIRST, then treasury for atomicity
         // If account transfer fails, treasury doesn't get fee (prevents inconsistent state)
-        IERC20(token).safeTransfer(account, net);
-        if (fee > 0) IERC20(token).safeTransfer(platformTreasury, fee);
+        IERC20(poolConfig.token).safeTransfer(account, net);
+        if (fee > 0) IERC20(poolConfig.token).safeTransfer(poolConfig.platformTreasury, fee);
 
         // Single event for The Graph efficiency
-        emit ClaimedMinimal(account, token, cumulativeAmount);
+        emit ClaimedMinimal(account, poolConfig.token, cumulativeAmount);
     }
 
     // ----------- Governance Functions ----------- //
@@ -233,8 +234,8 @@ contract RewardPoolImplementation is
      */
     function updatePlatformTreasury(address newTreasury) external onlyFactoryTimelock {
         if (newTreasury == address(0)) revert InvalidParameter("treasury");
-        address oldTreasury = platformTreasury;
-        platformTreasury = newTreasury;
+        address oldTreasury = poolConfig.platformTreasury;
+        poolConfig.platformTreasury = newTreasury;
         emit PlatformTreasuryUpdated(oldTreasury, newTreasury);
     }
 
@@ -247,7 +248,7 @@ contract RewardPoolImplementation is
     function initiateEmergencySweepNotice(address to, string calldata justification) external onlyFactoryTimelock {
         if (!paused()) revert SecurityViolation("pause_required");
         if (to == address(0)) revert InvalidParameter("recipient");
-        if (block.timestamp < lastClaimTimestamp + EMERGENCY_SWEEP_GRACE_PERIOD)
+        if (block.timestamp < poolConfig.lastClaimTimestamp + EMERGENCY_SWEEP_GRACE_PERIOD)
             revert SecurityViolation("grace_period");
 
         emergencyNoticeTimestamp = block.timestamp;
@@ -266,10 +267,10 @@ contract RewardPoolImplementation is
             revert InvalidParameter("notice_period");
 
         // CRITICAL: This bypasses ALL safety checks including untracked allocations
-        uint256 balance = IERC20(token).balanceOf(address(this));
+        uint256 balance = IERC20(poolConfig.token).balanceOf(address(this));
         if (balance == 0) revert InvalidParameter("balance");
 
-        IERC20(token).safeTransfer(to, balance);
+        IERC20(poolConfig.token).safeTransfer(to, balance);
 
         // Reset notice to prevent reuse
         emergencyNoticeTimestamp = 0;
@@ -297,7 +298,39 @@ contract RewardPoolImplementation is
      * @return factory Factory contract address
      */
     function getFactory() external view returns (address) {
-        return factory;
+        return poolConfig.factory;
+    }
+
+    /**
+     * @notice Get token address
+     * @return Token contract address
+     */
+    function token() external view returns (address) {
+        return poolConfig.token;
+    }
+
+    /**
+     * @notice Get platform treasury address
+     * @return Platform treasury address
+     */
+    function platformTreasury() external view returns (address) {
+        return poolConfig.platformTreasury;
+    }
+
+    /**
+     * @notice Get last claim timestamp
+     * @return Last claim timestamp
+     */
+    function lastClaimTimestamp() external view returns (uint256) {
+        return poolConfig.lastClaimTimestamp;
+    }
+
+    /**
+     * @notice Get factory address
+     * @return Factory contract address
+     */
+    function factory() external view returns (address) {
+        return poolConfig.factory;
     }
 
     // ----------- ERC-165 Support ----------- //
@@ -331,4 +364,3 @@ interface IRewardPoolFactory {
     function timelock() external view returns (address);
     function guardian() external view returns (address);
 }
-

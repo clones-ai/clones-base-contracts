@@ -1,7 +1,7 @@
 {
   "network": "hardhat",
   "chainId": 31337,
-  "timestamp": "2025-08-24T09:46:07.445Z",
+  "timestamp": "2025-08-26T13:15:42.456Z",
   "contracts": {
     "implementation": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
     "factory": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
@@ -11,7 +11,7 @@
       "weth": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
     },
     "testPools": {
-      "usdcPool": "0x8860A433419e941CB43B9fAFa2552fd9F6978858"
+      "usdcPool": "0x53b1E0579256b834A7B7e875E302C79c51AA82C9"
     }
   },
   "config": {
