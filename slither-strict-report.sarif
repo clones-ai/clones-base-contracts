@@ -1,0 +1,315 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Slither",
+          "informationUri": "https://github.com/crytic/slither",
+          "version": "0.11.3",
+          "rules": [
+            {
+              "id": "1-0-incorrect-equality",
+              "name": "incorrect-equality",
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "4.0"
+              },
+              "shortDescription": {
+                "text": "Dangerous strict equalities"
+              },
+              "help": {
+                "text": "Don't use strict equality to determine if an account has enough Ether or tokens."
+              }
+            },
+            {
+              "id": "2-1-calls-loop",
+              "name": "calls-loop",
+              "properties": {
+                "precision": "high",
+                "security-severity": "3.0"
+              },
+              "shortDescription": {
+                "text": "Calls inside a loop"
+              },
+              "help": {
+                "text": "Favor [pull over push](https://github.com/ethereum/wiki/wiki/Safety#favor-pull-over-push-for-external-calls) strategy for external calls."
+              }
+            },
+            {
+              "id": "2-1-timestamp",
+              "name": "timestamp",
+              "properties": {
+                "precision": "high",
+                "security-severity": "3.0"
+              },
+              "shortDescription": {
+                "text": "Block timestamp"
+              },
+              "help": {
+                "text": "Avoid relying on `block.timestamp`."
+              }
+            },
+            {
+              "id": "3-0-missing-inheritance",
+              "name": "missing-inheritance",
+              "properties": {
+                "precision": "very-high",
+                "security-severity": "0.0"
+              },
+              "shortDescription": {
+                "text": "Missing inheritance"
+              },
+              "help": {
+                "text": "Inherit from the missing interface or contract."
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "1-0-incorrect-equality",
+          "message": {
+            "text": "RewardPoolImplementation.emergencySweepAll(address) (contracts/RewardPoolImplementation.sol#273-288) uses a dangerous strict equality:\n\t- balance == 0 (contracts/RewardPoolImplementation.sol#280)\n",
+            "markdown": "[RewardPoolImplementation.emergencySweepAll(address)](contracts/RewardPoolImplementation.sol#L273-L288) uses a dangerous strict equality:\n\t- [balance == 0](contracts/RewardPoolImplementation.sol#L280)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolImplementation.sol"
+                },
+                "region": {
+                  "startLine": 273,
+                  "endLine": 288
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "f05c36d81fe9aab210d6aa94d6f7cf3c6f90d96d1d92b1aa69c8e8374a31a877"
+          }
+        },
+        {
+          "ruleId": "2-1-calls-loop",
+          "message": {
+            "text": "ClaimRouter.claimAll(ClaimRouter.ClaimData[]) (contracts/ClaimRouter.sol#87-150) has external calls inside a loop: factory = IVaultClaim(claims[i].vault).getFactory() (contracts/ClaimRouter.sol#98-110)\n",
+            "markdown": "[ClaimRouter.claimAll(ClaimRouter.ClaimData[])](contracts/ClaimRouter.sol#L87-L150) has external calls inside a loop: [factory = IVaultClaim(claims[i].vault).getFactory()](contracts/ClaimRouter.sol#L98-L110)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/ClaimRouter.sol"
+                },
+                "region": {
+                  "startLine": 87,
+                  "endLine": 150
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "05739d0e1f71a52fedcd58de96a7b153087394f25267231ca4d61ec743f51b58"
+          }
+        },
+        {
+          "ruleId": "2-1-calls-loop",
+          "message": {
+            "text": "ClaimRouter.claimAll(ClaimRouter.ClaimData[]) (contracts/ClaimRouter.sol#87-150) has external calls inside a loop: (gross,fee,net) = IVaultClaim(claims[i_scope_0].vault).payWithSig(claims[i_scope_0].account,claims[i_scope_0].cumulativeAmount,claims[i_scope_0].signature) (contracts/ClaimRouter.sol#125-143)\n",
+            "markdown": "[ClaimRouter.claimAll(ClaimRouter.ClaimData[])](contracts/ClaimRouter.sol#L87-L150) has external calls inside a loop: [(gross,fee,net) = IVaultClaim(claims[i_scope_0].vault).payWithSig(claims[i_scope_0].account,claims[i_scope_0].cumulativeAmount,claims[i_scope_0].signature)](contracts/ClaimRouter.sol#L125-L143)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/ClaimRouter.sol"
+                },
+                "region": {
+                  "startLine": 87,
+                  "endLine": 150
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "8613198cead21f3b2d8bbb694ef63dc24f5aced0e6e3bc17c49e225ec23bfa3f"
+          }
+        },
+        {
+          "ruleId": "2-1-timestamp",
+          "message": {
+            "text": "RewardPoolImplementation._performFund(uint256) (contracts/RewardPoolImplementation.sol#135-146) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- actualReceived != amount (contracts/RewardPoolImplementation.sol#143)\n",
+            "markdown": "[RewardPoolImplementation._performFund(uint256)](contracts/RewardPoolImplementation.sol#L135-L146) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- [actualReceived != amount](contracts/RewardPoolImplementation.sol#L143)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolImplementation.sol"
+                },
+                "region": {
+                  "startLine": 135,
+                  "endLine": 146
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "1151d095245ec9885d107da7520142ebab51adc5dbcecabff2c2a5128c292f99"
+          }
+        },
+        {
+          "ruleId": "2-1-timestamp",
+          "message": {
+            "text": "RewardPoolImplementation.initiateEmergencySweepNotice(address,string) (contracts/RewardPoolImplementation.sol#257-267) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < poolConfig.lastClaimTimestamp + EMERGENCY_SWEEP_GRACE_PERIOD (contracts/RewardPoolImplementation.sol#260)\n",
+            "markdown": "[RewardPoolImplementation.initiateEmergencySweepNotice(address,string)](contracts/RewardPoolImplementation.sol#L257-L267) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- [block.timestamp < poolConfig.lastClaimTimestamp + EMERGENCY_SWEEP_GRACE_PERIOD](contracts/RewardPoolImplementation.sol#L260)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolImplementation.sol"
+                },
+                "region": {
+                  "startLine": 257,
+                  "endLine": 267
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "30019f46e72a22172d01be13743e87c0cd57ab919c1e150a891715056d1cc6ea"
+          }
+        },
+        {
+          "ruleId": "2-1-timestamp",
+          "message": {
+            "text": "RewardPoolFactory.cancelPublisherRotation() (contracts/RewardPoolFactory.sol#316-331) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- graceEndTime == 0 (contracts/RewardPoolFactory.sol#318)\n\t- block.timestamp >= graceEndTime (contracts/RewardPoolFactory.sol#319)\n",
+            "markdown": "[RewardPoolFactory.cancelPublisherRotation()](contracts/RewardPoolFactory.sol#L316-L331) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- [graceEndTime == 0](contracts/RewardPoolFactory.sol#L318)\n\t- [block.timestamp >= graceEndTime](contracts/RewardPoolFactory.sol#L319)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolFactory.sol"
+                },
+                "region": {
+                  "startLine": 316,
+                  "endLine": 331
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "52cd4da99780490a01f0909a7052fe5bc951aea2c79455293fa590b9cbddfe46"
+          }
+        },
+        {
+          "ruleId": "2-1-timestamp",
+          "message": {
+            "text": "RewardPoolFactory.initiatePublisherRotation(address) (contracts/RewardPoolFactory.sol#300-311) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- graceEndTime > block.timestamp (contracts/RewardPoolFactory.sol#303)\n",
+            "markdown": "[RewardPoolFactory.initiatePublisherRotation(address)](contracts/RewardPoolFactory.sol#L300-L311) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- [graceEndTime > block.timestamp](contracts/RewardPoolFactory.sol#L303)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolFactory.sol"
+                },
+                "region": {
+                  "startLine": 300,
+                  "endLine": 311
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "5d578dc31cd15b4e1ddb3bd78f62b84dbe7f138276982dedb442b762e64ac46c"
+          }
+        },
+        {
+          "ruleId": "2-1-timestamp",
+          "message": {
+            "text": "RewardPoolImplementation.payWithSig(address,uint256,bytes) (contracts/RewardPoolImplementation.sol#188-237) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- validSigner = (signer == currentPublisher) || (graceEndTime > 0 && block.timestamp < graceEndTime && signer == oldPublisher) (contracts/RewardPoolImplementation.sol#207-208)\n\t- IERC20(poolConfig.token).balanceOf(address(this)) < gross (contracts/RewardPoolImplementation.sol#220)\n",
+            "markdown": "[RewardPoolImplementation.payWithSig(address,uint256,bytes)](contracts/RewardPoolImplementation.sol#L188-L237) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- [validSigner = (signer == currentPublisher) || (graceEndTime > 0 && block.timestamp < graceEndTime && signer == oldPublisher)](contracts/RewardPoolImplementation.sol#L207-L208)\n\t- [IERC20(poolConfig.token).balanceOf(address(this)) < gross](contracts/RewardPoolImplementation.sol#L220)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolImplementation.sol"
+                },
+                "region": {
+                  "startLine": 188,
+                  "endLine": 237
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "aaa253318c01b387cb277f0afe39a675960f33b6daff509a4676b39cc799aee6"
+          }
+        },
+        {
+          "ruleId": "2-1-timestamp",
+          "message": {
+            "text": "RewardPoolImplementation.emergencySweepAll(address) (contracts/RewardPoolImplementation.sol#273-288) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- emergencyNoticeTimestamp == 0 (contracts/RewardPoolImplementation.sol#274)\n\t- block.timestamp < emergencyNoticeTimestamp + EMERGENCY_NOTICE_PERIOD (contracts/RewardPoolImplementation.sol#275)\n\t- balance == 0 (contracts/RewardPoolImplementation.sol#280)\n",
+            "markdown": "[RewardPoolImplementation.emergencySweepAll(address)](contracts/RewardPoolImplementation.sol#L273-L288) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- [emergencyNoticeTimestamp == 0](contracts/RewardPoolImplementation.sol#L274)\n\t- [block.timestamp < emergencyNoticeTimestamp + EMERGENCY_NOTICE_PERIOD](contracts/RewardPoolImplementation.sol#L275)\n\t- [balance == 0](contracts/RewardPoolImplementation.sol#L280)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolImplementation.sol"
+                },
+                "region": {
+                  "startLine": 273,
+                  "endLine": 288
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "aabcebc6af5aa481e6fae06ad9c47f6fbb6fc8ba78e0af7e7f87a630487f2d36"
+          }
+        },
+        {
+          "ruleId": "3-0-missing-inheritance",
+          "message": {
+            "text": "RewardPoolFactory (contracts/RewardPoolFactory.sol#17-372) should inherit from IRewardPoolFactory (contracts/RewardPoolImplementation.sol#389-404)\n",
+            "markdown": "[RewardPoolFactory](contracts/RewardPoolFactory.sol#L17-L372) should inherit from [IRewardPoolFactory](contracts/RewardPoolImplementation.sol#L389-L404)\n"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "contracts/RewardPoolFactory.sol"
+                },
+                "region": {
+                  "startLine": 17,
+                  "endLine": 372
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "id": "1c65902585588d634492421b8e41d2b65c6c1991c085ca047ef6d66c6c9aaf0a"
+          }
+        }
+      ]
+    }
+  ]
+}

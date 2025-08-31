@@ -22,28 +22,46 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     error SecurityViolation(string check);
 
     // ----------- Constants ----------- //
+    /// @notice Role identifier for timelock operations
     bytes32 public constant TIMELOCK_ROLE = keccak256("TIMELOCK_ROLE");
+    /// @notice Role identifier for emergency operations
     bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
 
     // Grace period for publisher rotation overlap
+    /// @notice Grace period for publisher rotation
     uint256 public constant PUBLISHER_GRACE_PERIOD = 7 days;
 
     // ----------- Immutable State ----------- //
-    address public immutable poolImplementation;
-    address public immutable platformTreasury;
-    address public immutable timelock;
-    address public immutable guardian;
+    /// @notice Address of the pool implementation contract for cloning
+    address public immutable POOL_IMPLEMENTATION;
+    /// @notice Address of the platform treasury for fee collection
+    address public immutable PLATFORM_TREASURY;
+    /// @notice Address of the timelock contract for governance
+    address public immutable TIMELOCK;
+    /// @notice Address of the guardian for emergency operations
+    address public immutable GUARDIAN;
 
     // ----------- Publisher Management ----------- //
+    /// @notice Current active publisher address
     address public publisher; // Current active publisher
+    /// @notice Previous publisher address during grace period
     address public oldPublisher; // Previous publisher during grace period
+    /// @notice Timestamp when grace period ends
     uint256 public graceEndTime; // When grace period for old publisher ends
 
     // ----------- Governance ----------- //
+    /// @notice Mapping of allowed token addresses
     mapping(address => bool) public allowedTokens; // On-chain token allow-list
+    /// @notice Nonce for deterministic pool creation per creator and token
     mapping(address => mapping(address => uint256)) public poolNonce; // creator -> token -> nonce
 
     // ----------- Events ----------- //
+    /// @notice Emitted when a new pool is created
+    /// @param creator Address that created the pool
+    /// @param pool Address of the newly created pool
+    /// @param token Token address for the pool
+    /// @param salt Salt used for deterministic creation
+    /// @param nonce Nonce used for the creation
     event PoolCreated(
         address indexed creator,
         address indexed pool,
@@ -51,6 +69,13 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         bytes32 salt,
         uint256 nonce
     );
+    /// @notice Emitted when a new pool is created and funded in one transaction
+    /// @param creator Address that created the pool
+    /// @param pool Address of the newly created pool
+    /// @param token Token address for the pool
+    /// @param salt Salt used for deterministic creation
+    /// @param nonce Nonce used for the creation
+    /// @param fundingAmount Amount of tokens used to fund the pool
     event PoolCreatedAndFunded(
         address indexed creator,
         address indexed pool,
@@ -59,22 +84,42 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         uint256 nonce,
         uint256 fundingAmount
     );
-    event TokenAllowedUpdated(address indexed token, bool allowed);
-    event PublisherRotationInitiated(address indexed oldPublisher, address indexed newPublisher, uint256 graceEndTime);
+    /// @notice Emitted when token allowlist status is updated
+    /// @param token Token address
+    /// @param allowed New allowlist status
+    event TokenAllowedUpdated(address indexed token, bool indexed allowed);
+    /// @notice Emitted when publisher rotation is initiated
+    /// @param oldPublisher Previous publisher address
+    /// @param newPublisher New publisher address
+    /// @param graceEndTime Timestamp when grace period ends
+    event PublisherRotationInitiated(
+        address indexed oldPublisher,
+        address indexed newPublisher,
+        uint256 indexed graceEndTime
+    );
+    /// @notice Emitted when publisher rotation is cancelled
+    /// @param restoredPublisher Publisher address that was restored
+    /// @param cancelledPublisher Publisher address that was cancelled
     event PublisherRotationCancelled(address indexed restoredPublisher, address indexed cancelledPublisher);
 
     // ----------- Modifiers ----------- //
     modifier onlyFactoryTimelock() {
-        if (msg.sender != timelock) revert Unauthorized("timelock");
+        if (msg.sender != TIMELOCK) revert Unauthorized("timelock");
         _;
     }
 
     modifier onlyFactoryGuardian() {
-        if (msg.sender != guardian) revert Unauthorized("guardian");
+        if (msg.sender != GUARDIAN) revert Unauthorized("guardian");
         _;
     }
 
     // ----------- Constructor ----------- //
+    /// @notice Initialize the RewardPoolFactory
+    /// @param _poolImplementation Address of the pool implementation contract
+    /// @param _platformTreasury Address of the platform treasury
+    /// @param _timelock Address of the timelock contract
+    /// @param _guardian Address of the guardian
+    /// @param _publisher Initial publisher address
     constructor(
         address _poolImplementation,
         address _platformTreasury,
@@ -88,10 +133,10 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         if (_guardian == address(0)) revert InvalidParameter("guardian");
         if (_publisher == address(0)) revert InvalidParameter("publisher");
 
-        poolImplementation = _poolImplementation;
-        platformTreasury = _platformTreasury;
-        timelock = _timelock;
-        guardian = _guardian;
+        POOL_IMPLEMENTATION = _poolImplementation;
+        PLATFORM_TREASURY = _platformTreasury;
+        TIMELOCK = _timelock;
+        GUARDIAN = _guardian;
         publisher = _publisher;
 
         _grantRole(DEFAULT_ADMIN_ROLE, _timelock);
@@ -160,7 +205,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         // Use centralized salt generation - deterministic, no race conditions
         uint256 nonce = poolNonce[msg.sender][token];
         bytes32 salt = _computeSalt(msg.sender, token, nonce);
-        pool = Clones.cloneDeterministic(poolImplementation, salt);
+        pool = Clones.cloneDeterministic(POOL_IMPLEMENTATION, salt);
 
         // Verify prediction matches reality (sanity check) BEFORE incrementing nonce
         (address predicted, ) = predictPoolAddressWithNonce(msg.sender, token, nonce);
@@ -170,7 +215,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         ++poolNonce[msg.sender][token];
 
         // Initialize the clone with factory reference
-        IRewardPoolImplementation(pool).initialize(token, platformTreasury, address(this));
+        IRewardPoolImplementation(pool).initialize(token, PLATFORM_TREASURY, address(this));
 
         // Fund pool if amount specified
         if (fundingAmount > 0) {
@@ -196,7 +241,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     ) external view returns (address predicted, bytes32 salt) {
         uint256 nonce = poolNonce[creator][token];
         salt = _computeSalt(creator, token, nonce);
-        predicted = Clones.predictDeterministicAddress(poolImplementation, salt, address(this));
+        predicted = Clones.predictDeterministicAddress(POOL_IMPLEMENTATION, salt, address(this));
     }
 
     /**
@@ -213,7 +258,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         uint256 nonce
     ) public view returns (address predicted, bytes32 salt) {
         salt = _computeSalt(creator, token, nonce);
-        predicted = Clones.predictDeterministicAddress(poolImplementation, salt, address(this));
+        predicted = Clones.predictDeterministicAddress(POOL_IMPLEMENTATION, salt, address(this));
     }
 
     /**
@@ -221,6 +266,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      * @dev Uses abi.encode for deterministic behavior (no counter race conditions)
      * @param creator Creator address
      * @param token Token address
+     * @param nonce Nonce for deterministic creation
      * @return Salt for CREATE2
      */
     function _computeSalt(address creator, address token, uint256 nonce) internal pure returns (bytes32) {
@@ -244,7 +290,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      * @return Guardian address
      */
     function getGuardianInfo() external view returns (address) {
-        return guardian;
+        return GUARDIAN;
     }
 
     /**
@@ -298,12 +344,42 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     function unpause() external onlyFactoryTimelock {
         _unpause();
     }
+
+    // ----------- View Functions ----------- //
+    /// @notice Get pool implementation address
+    /// @return Pool implementation address
+    function poolImplementation() external view returns (address) {
+        return POOL_IMPLEMENTATION;
+    }
+
+    /// @notice Get platform treasury address
+    /// @return Platform treasury address
+    function platformTreasury() external view returns (address) {
+        return PLATFORM_TREASURY;
+    }
+
+    /// @notice Get timelock address
+    /// @return Timelock address
+    function timelock() external view returns (address) {
+        return TIMELOCK;
+    }
+
+    /// @notice Get guardian address
+    /// @return Guardian address
+    function guardian() external view returns (address) {
+        return GUARDIAN;
+    }
 }
 
 /**
  * @title IRewardPoolImplementation
  * @notice Interface for reward pool implementation initialization
+ * @author CLONES
  */
 interface IRewardPoolImplementation {
+    /// @notice Initialize the reward pool implementation
+    /// @param token Token address for rewards
+    /// @param platformTreasury Treasury address for fees
+    /// @param factory Factory address for governance
     function initialize(address token, address platformTreasury, address factory) external;
 }

@@ -39,8 +39,11 @@ contract RewardPoolImplementation is
     error SecurityViolation(string check);
 
     // ----------- Constants ----------- //
+    /// @notice Platform fee in basis points (10%)
     uint16 public constant FEE_BPS = 1000; // 10% fixed globally
+    /// @notice Grace period for publisher rotation
     uint256 public constant PUBLISHER_GRACE_PERIOD = 7 days;
+    /// @notice Grace period before emergency sweep can be executed
     uint256 public constant EMERGENCY_SWEEP_GRACE_PERIOD = 180 days;
 
     uint256 private constant FEE_DENOMINATOR = 10000;
@@ -53,15 +56,21 @@ contract RewardPoolImplementation is
         address factory; // 20 bytes - overflow to slot 1
         uint64 lastClaimTimestamp; // 8 bytes - fits in slot 1
     }
+    /// @notice Pool configuration struct containing token, treasury, factory addresses and timestamp
     PoolConfig public poolConfig;
 
     // Cumulative claim tracking
+    /// @notice Tracks cumulative amount already claimed per account
     mapping(address => uint256) public alreadyClaimed; // Cumulative amount already claimed
+    /// @notice Tracks cumulative fees already paid per account
     mapping(address => uint256) public alreadyFeePaid; // Cumulative fees already paid by account
+    /// @notice Total amount already claimed by all users
     uint256 public globalAlreadyClaimed; // Total amount already claimed by all users
 
     // Emergency sweep state
+    /// @notice Timestamp when emergency sweep notice was initiated
     uint256 public emergencyNoticeTimestamp; // On-chain notice timestamp
+    /// @notice Mandatory notice period before emergency sweep can be executed
     uint256 public constant EMERGENCY_NOTICE_PERIOD = 7 days; // Mandatory notice period
 
     // ----------- Modifiers ----------- //
@@ -76,6 +85,7 @@ contract RewardPoolImplementation is
     }
 
     // ----------- Constructor ----------- //
+    /// @notice Constructor disables initializers to prevent direct initialization
     constructor() {
         // Disable initializers on implementation to prevent direct initialization
         _disableInitializers();
@@ -183,9 +193,8 @@ contract RewardPoolImplementation is
         if (cumulativeAmount <= alreadyClaimed[account]) revert AlreadyExists("claim");
 
         // EIP-712 signature verification (uses OZ EIP712 inheritance)
-        bytes32 structHash = keccak256(
-            abi.encode(keccak256("Claim(address account,uint256 cumulativeAmount)"), account, cumulativeAmount)
-        );
+        bytes32 typeHash = keccak256("Claim(address account,uint256 cumulativeAmount)");
+        bytes32 structHash = keccak256(abi.encode(typeHash, account, cumulativeAmount));
         bytes32 digest = _hashTypedDataV4(structHash); // OZ EIP712 handles domain + chainId
         address signer = ECDSA.recover(digest, signature);
 
@@ -344,23 +353,52 @@ contract RewardPoolImplementation is
     }
 
     // ----------- Events ----------- //
-    event Funded(address indexed funder, address indexed token, uint256 amount);
+    /// @notice Emitted when the vault is funded with tokens
+    /// @param funder Address that funded the vault
+    /// @param token Token address that was funded
+    /// @param amount Amount of tokens funded
+    event Funded(address indexed funder, address indexed token, uint256 indexed amount);
 
     // Optimized event for massive claims volume (2 indexed params)
-    event ClaimedMinimal(address indexed account, address indexed token, uint256 cumulativeAmount);
+    /// @notice Emitted when a claim is processed (minimal event for gas efficiency)
+    /// @param account Address that claimed tokens
+    /// @param token Token address that was claimed
+    /// @param cumulativeAmount Total cumulative amount claimed by this account
+    event ClaimedMinimal(address indexed account, address indexed token, uint256 indexed cumulativeAmount);
 
+    /// @notice Emitted when platform treasury address is updated
+    /// @param oldTreasury Previous treasury address
+    /// @param newTreasury New treasury address
     event PlatformTreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
-    event EmergencySweepNoticeInitiated(address indexed to, string justification, uint256 executionTimestamp);
-    event EmergencySweep(address indexed to, uint256 amount);
+    /// @notice Emitted when emergency sweep notice is initiated
+    /// @param to Address that will receive the swept funds
+    /// @param justification Public justification for the sweep
+    /// @param executionTimestamp Timestamp when sweep can be executed
+    event EmergencySweepNoticeInitiated(address indexed to, string justification, uint256 indexed executionTimestamp);
+    /// @notice Emitted when emergency sweep is executed
+    /// @param to Address that received the swept funds
+    /// @param amount Amount of tokens swept
+    event EmergencySweep(address indexed to, uint256 indexed amount);
 }
 
 /**
  * @title IRewardPoolFactory
  * @notice Interface for factory governance functions
+ * @author CLONES
  */
 interface IRewardPoolFactory {
+    /// @notice Get current publisher information including grace period
+    /// @return current Current active publisher address
+    /// @return old Previous publisher address during grace period
+    /// @return graceEnd Timestamp when grace period ends
     function getPublisherInfo() external view returns (address current, address old, uint256 graceEnd);
+    /// @notice Get guardian information
+    /// @return Guardian address
     function getGuardianInfo() external view returns (address);
+    /// @notice Get timelock address
+    /// @return Timelock address
     function timelock() external view returns (address);
+    /// @notice Get guardian address
+    /// @return Guardian address
     function guardian() external view returns (address);
 }
