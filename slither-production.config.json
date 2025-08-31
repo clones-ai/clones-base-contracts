@@ -11,8 +11,6 @@
     "json": "slither-report.json",
     "sarif": "slither-report.sarif",
     "zip": "slither-artifacts.zip",
-    "checklist": true,
-    "markdown": "slither-report.md",
     "show_ignored_findings": true,
     "compile_force_framework": "hardhat",
     "hardhat_ignore_compile": false,
