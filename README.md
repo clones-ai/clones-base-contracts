@@ -33,6 +33,7 @@ The `RewardPoolFactory` is the core factory contract that creates deterministic 
 - **Token Allowlist:** Only approved tokens can be used for pool creation
 - **Publisher Management:** Role-based system for authorized reward publishers
 - **Minimal Gas Cost:** ~50k gas per pool creation vs ~2M gas for full deployment
+- **Atomic Create+Fund:** Single transaction for pool creation and initial funding (optimal UX)
 
 ### 2. RewardPoolImplementation
 
@@ -43,7 +44,6 @@ The `RewardPoolImplementation` serves as the master contract containing all pool
 - **Cumulative Rewards:** Prevents double-spending with cumulative reward tracking
 - **Factory Integration:** Validates that calls originate from approved factories
 - **Fee Collection:** Transparent 10% platform fee on all reward claims
-- **Deadline Protection:** Time-limited signatures prevent stale claim attempts
 
 ### 3. ClaimRouter
 
@@ -67,7 +67,8 @@ The current Phase 1 implementation provides:
 2. **Scalability**: Support for unlimited independent reward pools
 3. **Predictability**: Deterministic addresses enable off-chain integrations
 4. **Security**: EIP-712 signatures with replay protection
-5. **User Experience**: Batch claiming reduces transaction overhead
+5. **User Experience**: Batch claiming + atomic create+fund reduces transaction overhead
+6. **Gas Optimization**: Single `createAndFundPool()` vs separate create+fund transactions
 
 ---
 
@@ -190,3 +191,49 @@ The factory system consists of standard contracts (no upgrades needed due to EIP
    - **`deploy-and-test`** - Deploy + integration tests + gas benchmarks
    - **`final-validation`** - CREATE2 validation + end-to-end testing
    - **`verify`** - Contract verification on block explorers
+
+---
+
+## Contract Administration
+
+This section covers common administrative tasks for the deployed factory system. All administrative functions are restricted to authorized roles like `timelock` or `guardian`.
+
+### Managing the Token Allowlist
+
+The `RewardPoolFactory` maintains an on-chain allowlist of tokens that are permitted for creating reward pools. This is a critical security measure to prevent the use of malicious or non-standard tokens.
+
+Only the `timelock` address can add or remove tokens from this list by calling the `setTokenAllowed` function.
+
+#### How to Add a Token to the Allowlist
+
+You can manage the allowlist using the Hardhat console.
+
+1.  **Connect to the appropriate network** using the Hardhat console. Ensure your Hardhat configuration is set up to use the `timelock` account's private key for this network.
+
+    ```bash
+    # Replace <network> with your target network (e.g., baseSepolia)
+    npx hardhat console --network <network>
+    ```
+
+2.  **Execute the following commands** inside the Hardhat console to call the `setTokenAllowed` function:
+
+    ```javascript
+    // 1. Set the addresses
+    const factoryAddress = "YOUR_FACTORY_ADDRESS_HERE"; // Replace with your deployed RewardPoolFactory address
+    const tokenAddress = "TOKEN_TO_ALLOW_ADDRESS_HERE"; // Replace with the ERC20 token address to add
+
+    // 2. Get the contract instance
+    const factory = await ethers.getContractAt("RewardPoolFactory", factoryAddress);
+
+    // 3. Call the function to add the token (set the second argument to 'false' to remove)
+    console.log(`Adding token ${tokenAddress} to the allowlist...`);
+    const tx = await factory.setTokenAllowed(tokenAddress, true);
+    await tx.wait();
+    console.log("Transaction confirmed!");
+
+    // 4. (Optional) Verify the token was added
+    const isAllowed = await factory.allowedTokens(tokenAddress);
+    console.log(`Is token ${tokenAddress} allowed? ${isAllowed}`);
+    ```
+
+**Important:** Only add well-audited, standard ERC20 tokens to the allowlist. Avoid tokens with fee-on-transfer mechanics, hooks, or other non-standard behavior unless you have thoroughly analyzed the security implications.

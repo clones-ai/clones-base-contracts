@@ -23,10 +23,12 @@ async function main() {
     // Base Sepolia test tokens
     const SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
     const SEPOLIA_WETH = "0x4200000000000000000000000000000000000006";
+    const SEPOLIA_CLONES = "0x15eB86c7E54B350bf936d916Df33AEF697202E29";
 
     // Base Mainnet tokens
     const MAINNET_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
     const MAINNET_WETH = "0x4200000000000000000000000000000000000006";
+    const MAINNET_CLONES = "?";
 
     // Deploy parameters - use deployer for all roles on testnet
     const treasuryAddress = deployer.address;
@@ -140,6 +142,7 @@ async function main() {
         // Add tokens to allowlist
         const usdcAddress = chainId === 84532 ? SEPOLIA_USDC : MAINNET_USDC;
         const wethAddress = chainId === 84532 ? SEPOLIA_WETH : MAINNET_WETH;
+        const clonesAddress = chainId === 84532 ? SEPOLIA_CLONES : MAINNET_CLONES;
 
         console.log("Adding USDC to allowlist...");
         nonce = await deployer.getNonce();
@@ -163,13 +166,28 @@ async function main() {
         });
         await wethTx.wait();
 
+        // Wait for confirmations
+        console.log("⏱️  Waiting 5 seconds for confirmations...");
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        console.log("Adding CLONES to allowlist...");
+        nonce = await deployer.getNonce();
+        const clonesTx = await factory.setTokenAllowed(clonesAddress, true, {
+            nonce: nonce,
+            gasLimit: 100000,
+            gasPrice: ethers.parseUnits("1.5", "gwei")
+        });
+        await clonesTx.wait();
+
         // Verify tokens are allowed
         await new Promise(resolve => setTimeout(resolve, 3000));
         const usdcAllowed = await factory.allowedTokens(usdcAddress);
         const wethAllowed = await factory.allowedTokens(wethAddress);
+        const clonesAllowed = await factory.allowedTokens(clonesAddress);
 
         console.log(`✅ USDC allowed: ${usdcAllowed}`);
         console.log(`✅ WETH allowed: ${wethAllowed}`);
+        console.log(`✅ CLONES allowed: ${clonesAllowed}`);
 
         // Step 5: Test Pool Creation
         console.log("\n🏊 Step 5: Testing pool creation...");
@@ -193,6 +211,7 @@ async function main() {
         console.log(`ClaimRouter: ${claimRouterAddress}`);
         console.log(`USDC: ${usdcAddress}`);
         console.log(`WETH: ${wethAddress}`);
+        console.log(`CLONES: ${clonesAddress}`);
         console.log(`Test Pool: ${poolAddress}`);
         console.log("=".repeat(60));
 
@@ -207,7 +226,8 @@ async function main() {
                 claimRouter: claimRouterAddress,
                 tokens: {
                     usdc: usdcAddress,
-                    weth: wethAddress
+                    weth: wethAddress,
+                    clones: clonesAddress
                 },
                 testPools: {
                     usdcPool: poolAddress

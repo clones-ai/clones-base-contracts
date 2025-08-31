@@ -170,7 +170,7 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         ++poolNonce[msg.sender][token];
 
         // Initialize the clone with factory reference
-        IRewardPoolImplementation(pool).initialize(token, msg.sender, platformTreasury, address(this));
+        IRewardPoolImplementation(pool).initialize(token, platformTreasury, address(this));
 
         // Fund pool if amount specified
         if (fundingAmount > 0) {
@@ -305,5 +305,5 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
  * @notice Interface for reward pool implementation initialization
  */
 interface IRewardPoolImplementation {
-    function initialize(address token, address creator, address platformTreasury, address factory) external;
+    function initialize(address token, address platformTreasury, address factory) external;
 }

@@ -8,3 +8,6 @@ dist
 coverage.json
 .openzeppelin
 .DS_Store
+slither_results.json
+slither-artifacts.zip
+slither-report.sarif

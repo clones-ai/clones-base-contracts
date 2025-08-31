@@ -15,7 +15,11 @@
         "finish-setup:baseSepolia": "hardhat run scripts/finish-setup.ts --network baseSepolia",
         "verify": "ts-node scripts/verify.ts",
         "verify:base": "ts-node scripts/verify.ts --network base",
-        "verify:baseSepolia": "ts-node scripts/verify.ts --network baseSepolia"
+        "verify:baseSepolia": "ts-node scripts/verify.ts --network baseSepolia",
+        "security": "slither . --config slither.config.json",
+        "security:production": "slither . --config slither-production.config.json",
+        "security:optimal": "slither . --config slither-optimal.config.json",
+        "security:strict": "slither . --config slither-strict.config.json"
     },
     "devDependencies": {
         "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
@@ -30,7 +34,7 @@
         "chai": "^4.4.1",
         "hardhat": "^2.26.0",
         "hardhat-gas-reporter": "^2.2.0",
-        "prettier-plugin-solidity": "^2.1.0",
+        "prettier-plugin-solidity": "^1.4.1",
         "solhint": "^6.0.1",
         "solhint-plugin-prettier": "^0.1.0",
         "solidity-coverage": "^0.8.16",

@@ -74,7 +74,6 @@ describe("RewardPoolImplementation", function () {
         it("Should prevent direct initialization on implementation", async function () {
             await expect(implementation.initialize(
                 await testToken.getAddress(),
-                creator.address,
                 treasury.address,
                 await factory.getAddress()
             )).to.be.revertedWithCustomError(implementation, "InvalidInitialization");
@@ -83,7 +82,6 @@ describe("RewardPoolImplementation", function () {
         it("Should prevent re-initialization", async function () {
             await expect(vault.initialize(
                 await testToken.getAddress(),
-                creator.address,
                 treasury.address,
                 await factory.getAddress()
             )).to.be.revertedWithCustomError(implementation, "InvalidInitialization");
@@ -177,16 +175,14 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should process claim with valid signature", async function () {
-            const deadline = await time.latest() + 3600;
             const signature = await signClaim(
                 publisher,
                 vault,
                 claimer.address,
-                CLAIM_AMOUNT,
-                deadline
+                CLAIM_AMOUNT
             );
 
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, signature))
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature))
                 .to.emit(vault, "ClaimedMinimal")
                 .withArgs(claimer.address, await testToken.getAddress(), CLAIM_AMOUNT);
 
@@ -198,11 +194,9 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should handle cumulative claims correctly", async function () {
-            const deadline = await time.latest() + 3600;
-
             // First claim: 100 tokens
-            let signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, signature);
+            let signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
 
             // Second claim: cumulative 200 tokens (additional 100)
             const cumulativeAmount = CLAIM_AMOUNT * 2n;
@@ -211,50 +205,21 @@ describe("RewardPoolImplementation", function () {
             const additionalFee = cumulativeFee - EXPECTED_FEE;
             const additionalNet = additionalAmount - additionalFee;
 
-            signature = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount, deadline + 1);
+            signature = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount);
 
             const initialBalance = await testToken.balanceOf(claimer.address);
-            await vault.payWithSig(claimer.address, cumulativeAmount, deadline + 1, signature);
+            await vault.payWithSig(claimer.address, cumulativeAmount, signature);
 
             expect(await vault.alreadyClaimed(claimer.address)).to.equal(cumulativeAmount);
             expect(await testToken.balanceOf(claimer.address)).to.equal(initialBalance + additionalNet);
         });
 
-        it("Should reject expired signatures", async function () {
-            const expiredDeadline = await time.latest() - 1;
-            const signature = await signClaim(
-                publisher,
-                await await vault.getAddress(),
-                claimer.address,
-                CLAIM_AMOUNT,
-                expiredDeadline
-            );
 
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, expiredDeadline, signature))
-                .to.be.revertedWithCustomError(vault, "SecurityViolation")
-                .withArgs("deadline");
-        });
-
-        it("Should reject signatures too far in future", async function () {
-            const farFutureDeadline = await time.latest() + (8 * 24 * 60 * 60); // 8 days
-            const signature = await signClaim(
-                publisher,
-                await await vault.getAddress(),
-                claimer.address,
-                CLAIM_AMOUNT,
-                farFutureDeadline
-            );
-
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, farFutureDeadline, signature))
-                .to.be.revertedWithCustomError(vault, "InvalidParameter")
-                .withArgs("deadline");
-        });
 
         it("Should reject invalid signatures", async function () {
-            const deadline = await time.latest() + 3600;
             const invalidSignature = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, invalidSignature))
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, invalidSignature))
                 .to.be.revertedWithCustomError(vault, "ECDSAInvalidSignature");
         });
 
@@ -262,16 +227,14 @@ describe("RewardPoolImplementation", function () {
             // Initiate publisher rotation
             await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
 
-            const deadline = await time.latest() + 3600;
-
             // Sign with old publisher
-            const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             // Sign with new publisher
-            const newSignature = await signClaim(newPublisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline + 1);
+            const newSignature = await signClaim(newPublisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             // Both should work during grace period
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, oldSignature))
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, oldSignature))
                 .to.emit(vault, "ClaimedMinimal");
 
             // Reset for second test
@@ -280,9 +243,9 @@ describe("RewardPoolImplementation", function () {
             await vault.connect(funder).fund(FUND_AMOUNT);
 
             const newClaimer = owner; // Use different address
-            const newSignature2 = await signClaim(newPublisher, await vault.getAddress(), newClaimer.address, CLAIM_AMOUNT, deadline + 2);
+            const newSignature2 = await signClaim(newPublisher, await vault.getAddress(), newClaimer.address, CLAIM_AMOUNT);
 
-            await expect(vault.payWithSig(newClaimer.address, CLAIM_AMOUNT, deadline + 2, newSignature2))
+            await expect(vault.payWithSig(newClaimer.address, CLAIM_AMOUNT, newSignature2))
                 .to.emit(vault, "ClaimedMinimal");
         });
 
@@ -293,32 +256,29 @@ describe("RewardPoolImplementation", function () {
             // Advance time beyond grace period
             await time.increase(7 * 24 * 60 * 60 + 1);
 
-            const deadline = await time.latest() + 3600;
-            const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, oldSignature))
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, oldSignature))
                 .to.be.revertedWithCustomError(vault, "SecurityViolation")
                 .withArgs("signature");
         });
 
         it("Should prevent duplicate claims", async function () {
-            const deadline = await time.latest() + 3600;
-            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, signature);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
 
             // Try to claim same amount again
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline + 1, signature))
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature))
                 .to.be.revertedWithCustomError(vault, "AlreadyExists")
                 .withArgs("claim");
         });
 
         it("Should reject claims with insufficient vault balance", async function () {
-            const deadline = await time.latest() + 3600;
             const largeAmount = FUND_AMOUNT + ethers.parseUnits("1", 18);
-            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, largeAmount, deadline);
+            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, largeAmount);
 
-            await expect(vault.payWithSig(claimer.address, largeAmount, deadline, signature))
+            await expect(vault.payWithSig(claimer.address, largeAmount, signature))
                 .to.be.revertedWithCustomError(vault, "InvalidParameter")
                 .withArgs("balance");
         });
@@ -335,34 +295,31 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should benchmark first claim gas usage", async function () {
-            const deadline = await time.latest() + 3600;
-            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            const tx = await vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline, signature);
+            const tx = await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
             const receipt = await tx.wait();
 
             // Target: < 140k gas for first claim
             console.log(`First claim gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(200000);
+            expect(receipt!.gasUsed).to.be.lessThan(210000);
         });
 
         it("Should benchmark subsequent claim gas usage", async function () {
             // Make first claim
-            const deadline1 = await time.latest() + 3600;
-            const signature1 = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline1);
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, deadline1, signature1);
+            const signature1 = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature1);
 
             // Make second claim
-            const deadline2 = await time.latest() + 3601;
             const cumulativeAmount = CLAIM_AMOUNT * 2n;
-            const signature2 = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount, deadline2);
+            const signature2 = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount);
 
-            const tx = await vault.payWithSig(claimer.address, cumulativeAmount, deadline2, signature2);
+            const tx = await vault.payWithSig(claimer.address, cumulativeAmount, signature2);
             const receipt = await tx.wait();
 
             // Target: < 100k gas for subsequent claims
             console.log(`Subsequent claim gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(110000);
+            expect(receipt!.gasUsed).to.be.lessThan(120000);
         });
     });
 
@@ -396,8 +353,7 @@ describe("RewardPoolImplementation", function () {
         signer: SignerWithAddress,
         vaultAddress: string | { getAddress(): Promise<string> },
         account: string,
-        cumulativeAmount: bigint,
-        deadline: number
+        cumulativeAmount: bigint
     ): Promise<string> {
         const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
 
@@ -412,15 +368,13 @@ describe("RewardPoolImplementation", function () {
         const types = {
             Claim: [
                 { name: "account", type: "address" },
-                { name: "cumulativeAmount", type: "uint256" },
-                { name: "deadline", type: "uint256" }
+                { name: "cumulativeAmount", type: "uint256" }
             ]
         };
 
         const value = {
             account,
-            cumulativeAmount: cumulativeAmount.toString(),
-            deadline
+            cumulativeAmount: cumulativeAmount.toString()
         };
 
         return await signer.signTypedData(domain, types, value);

@@ -148,14 +148,12 @@ describe("ClaimRouter", function () {
 
     describe("Batch Claims", function () {
         it("Should process single claim successfully", async function () {
-            const deadline = await time.latest() + 3600;
-            const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [{
                 vault: await await vault1.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
-                deadline,
                 signature
             }];
 
@@ -168,24 +166,20 @@ describe("ClaimRouter", function () {
         });
 
         it("Should process multiple claims in batch", async function () {
-            const deadline = await time.latest() + 3600;
-
-            const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
-            const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
+            const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [
                 {
                     vault: await await vault1.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline,
                     signature: signature1
                 },
                 {
                     vault: await await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline,
                     signature: signature2
                 }
             ];
@@ -199,9 +193,7 @@ describe("ClaimRouter", function () {
         });
 
         it("Should handle mixed success/failure gracefully", async function () {
-            const deadline = await time.latest() + 3600;
-
-            const validSignature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const validSignature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
             const invalidSignature = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
             const claimData = [
@@ -209,14 +201,12 @@ describe("ClaimRouter", function () {
                     vault: await await vault1.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline,
                     signature: validSignature
                 },
                 {
                     vault: await await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline,
                     signature: invalidSignature
                 }
             ];
@@ -245,14 +235,12 @@ describe("ClaimRouter", function () {
             await newFactory.connect(creator).createPool(await testToken.getAddress());
             const rogueVault = await ethers.getContractAt("RewardPoolImplementation", rogueVaultAddress);
 
-            const deadline = await time.latest() + 3600;
-            const signature = await signClaim(publisher, await rogueVault.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature = await signClaim(publisher, await rogueVault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [{
                 vault: await rogueVault.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
-                deadline,
                 signature
             }];
 
@@ -267,23 +255,20 @@ describe("ClaimRouter", function () {
             // Pause vault1
             await vault1.connect(guardian).pause();
 
-            const deadline = await time.latest() + 3600;
-            const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
-            const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
+            const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [
                 {
                     vault: await await vault1.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline,
                     signature: signature1
                 },
                 {
                     vault: await await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline,
                     signature: signature2
                 }
             ];
@@ -308,7 +293,6 @@ describe("ClaimRouter", function () {
                 vault: await await vault1.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
-                deadline: await time.latest() + 3600,
                 signature: "0x00"
             });
 
@@ -318,15 +302,13 @@ describe("ClaimRouter", function () {
         });
 
         it("Should handle invalid vault addresses", async function () {
-            const deadline = await time.latest() + 3600;
-            const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT, deadline);
+            const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const invalidVault = "0x1234567890123456789012345678901234567890"; // Invalid vault but not zero
             const claimData = [{
                 vault: invalidVault,
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
-                deadline,
                 signature
             }];
 
@@ -338,8 +320,6 @@ describe("ClaimRouter", function () {
 
     describe("Gas Benchmarks", function () {
         it("Should benchmark batch claim gas usage", async function () {
-            const deadline = await time.latest() + 3600;
-
             // Create batch of 5 claims
             const batchSize = 5;
             const claimData = [];
@@ -349,15 +329,13 @@ describe("ClaimRouter", function () {
                     publisher,
                     i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(),
                     claimer.address,
-                    CLAIM_AMOUNT,
-                    deadline + i
+                    CLAIM_AMOUNT
                 );
 
                 claimData.push({
                     vault: i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
-                    deadline: deadline + i,
                     signature
                 });
             }
@@ -377,8 +355,7 @@ describe("ClaimRouter", function () {
         signer: SignerWithAddress,
         vaultAddress: string,
         account: string,
-        cumulativeAmount: bigint,
-        deadline: number
+        cumulativeAmount: bigint
     ): Promise<string> {
         const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
 
@@ -392,15 +369,13 @@ describe("ClaimRouter", function () {
         const types = {
             Claim: [
                 { name: "account", type: "address" },
-                { name: "cumulativeAmount", type: "uint256" },
-                { name: "deadline", type: "uint256" }
+                { name: "cumulativeAmount", type: "uint256" }
             ]
         };
 
         const value = {
             account,
-            cumulativeAmount: cumulativeAmount.toString(),
-            deadline
+            cumulativeAmount: cumulativeAmount.toString()
         };
 
         return await signer.signTypedData(domain, types, value);
