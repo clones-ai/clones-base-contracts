@@ -344,31 +344,6 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     function unpause() external onlyFactoryTimelock {
         _unpause();
     }
-
-    // ----------- View Functions ----------- //
-    /// @notice Get pool implementation address
-    /// @return Pool implementation address
-    function poolImplementation() external view returns (address) {
-        return POOL_IMPLEMENTATION;
-    }
-
-    /// @notice Get platform treasury address
-    /// @return Platform treasury address
-    function platformTreasury() external view returns (address) {
-        return PLATFORM_TREASURY;
-    }
-
-    /// @notice Get timelock address
-    /// @return Timelock address
-    function timelock() external view returns (address) {
-        return TIMELOCK;
-    }
-
-    /// @notice Get guardian address
-    /// @return Guardian address
-    function guardian() external view returns (address) {
-        return GUARDIAN;
-    }
 }
 
 /**

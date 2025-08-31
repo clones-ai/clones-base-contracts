@@ -149,13 +149,6 @@ contract ClaimRouter is ReentrancyGuard {
         emit BatchClaimed(msg.sender, successful, failed, totalGross, totalFees, totalNet, block.timestamp);
     }
 
-    // ----------- View Functions ----------- //
-    /// @notice Get timelock address
-    /// @return Timelock address
-    function timelock() external view returns (address) {
-        return TIMELOCK;
-    }
-
     // ----------- Events ----------- //
     /// @notice Emitted when a batch of claims is processed
     /// @param caller Address that initiated the batch claim

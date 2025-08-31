@@ -56,10 +56,10 @@ describe("RewardPoolFactory", function () {
 
     describe("Deployment", function () {
         it("Should set correct initial state", async function () {
-            expect(await factory.poolImplementation()).to.equal(await implementation.getAddress());
-            expect(await factory.platformTreasury()).to.equal(treasury.address);
-            expect(await factory.timelock()).to.equal(timelock.address);
-            expect(await factory.guardian()).to.equal(guardian.address);
+            expect(await factory.POOL_IMPLEMENTATION()).to.equal(await implementation.getAddress());
+            expect(await factory.PLATFORM_TREASURY()).to.equal(treasury.address);
+            expect(await factory.TIMELOCK()).to.equal(timelock.address);
+            expect(await factory.GUARDIAN()).to.equal(guardian.address);
             expect(await factory.publisher()).to.equal(publisher.address);
         });
 
@@ -399,12 +399,12 @@ describe("RewardPoolFactory", function () {
             // Should succeed but pool receives less due to fee
             const tx = await factory.connect(creator).createAndFundPool(await feeToken.getAddress(), fundingAmount);
             const receipt = await tx.wait();
-            
+
             // Pool should exist and have balance (less than funding due to fee)
             const factoryAddress = await factory.getAddress();
             const createdEvent = factory.interface.parseLog(receipt!.logs.find(log => log.address === factoryAddress)!);
             const poolAddress = createdEvent!.args.pool;
-            
+
             const poolBalance = await feeToken.balanceOf(poolAddress);
             expect(poolBalance).to.be.lessThan(fundingAmount); // Due to 1% fee
             expect(poolBalance).to.be.greaterThan(0); // But not zero

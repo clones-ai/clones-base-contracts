@@ -88,7 +88,7 @@ describe("ClaimRouter", function () {
 
     describe("Deployment", function () {
         it("Should set correct initial state", async function () {
-            expect(await claimRouter.timelock()).to.equal(timelock.address);
+            expect(await claimRouter.TIMELOCK()).to.equal(timelock.address);
             expect(await claimRouter.maxBatchSize()).to.equal(20);
         });
 
