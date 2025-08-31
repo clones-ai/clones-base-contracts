@@ -47,7 +47,6 @@ contract RewardPoolImplementation is
     uint256 public constant EMERGENCY_SWEEP_GRACE_PERIOD = 180 days;
 
     uint256 private constant FEE_DENOMINATOR = 10000;
-    uint256 private constant FEE_MULTIPLIER = FEE_BPS;
 
     // ----------- State Variables ----------- //
     struct PoolConfig {
@@ -75,12 +74,12 @@ contract RewardPoolImplementation is
 
     // ----------- Modifiers ----------- //
     modifier onlyFactoryTimelock() {
-        if (msg.sender != IRewardPoolFactory(poolConfig.factory).timelock()) revert Unauthorized("timelock");
+        if (msg.sender != IRewardPoolFactory(poolConfig.factory).TIMELOCK()) revert Unauthorized("timelock");
         _;
     }
 
     modifier onlyFactoryGuardian() {
-        if (msg.sender != IRewardPoolFactory(poolConfig.factory).guardian()) revert Unauthorized("guardian");
+        if (msg.sender != IRewardPoolFactory(poolConfig.factory).GUARDIAN()) revert Unauthorized("guardian");
         _;
     }
 
@@ -213,7 +212,7 @@ contract RewardPoolImplementation is
         gross = cumulativeAmount - alreadyClaimed[account]; // newAmount
 
         {
-            uint256 cumulativeFeeDue = (cumulativeAmount * FEE_MULTIPLIER) / FEE_DENOMINATOR;
+            uint256 cumulativeFeeDue = (cumulativeAmount * FEE_BPS) / FEE_DENOMINATOR;
             fee = cumulativeFeeDue - alreadyFeePaid[account]; // feeForThisClaim
             net = gross - fee;
 
@@ -334,14 +333,6 @@ contract RewardPoolImplementation is
         return poolConfig.lastClaimTimestamp;
     }
 
-    /**
-     * @notice Get factory address
-     * @return Factory contract address
-     */
-    function factory() external view returns (address) {
-        return poolConfig.factory;
-    }
-
     // ----------- ERC-165 Support ----------- //
     /**
      * @notice Check interface support
@@ -395,10 +386,10 @@ interface IRewardPoolFactory {
     /// @notice Get guardian information
     /// @return Guardian address
     function getGuardianInfo() external view returns (address);
-    /// @notice Get timelock address
+    /// @notice Get timelock address (automatic getter)
     /// @return Timelock address
-    function timelock() external view returns (address);
-    /// @notice Get guardian address
+    function TIMELOCK() external view returns (address);
+    /// @notice Get guardian address (automatic getter)
     /// @return Guardian address
-    function guardian() external view returns (address);
+    function GUARDIAN() external view returns (address);
 }

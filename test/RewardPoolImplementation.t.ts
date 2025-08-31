@@ -68,7 +68,7 @@ describe("RewardPoolImplementation", function () {
         it("Should be initialized correctly after creation", async function () {
             expect(await vault.token()).to.equal(await testToken.getAddress());
             expect(await vault.platformTreasury()).to.equal(treasury.address);
-            expect(await vault.factory()).to.equal(await factory.getAddress());
+            expect(await vault.getFactory()).to.equal(await factory.getAddress());
         });
 
         it("Should prevent direct initialization on implementation", async function () {
