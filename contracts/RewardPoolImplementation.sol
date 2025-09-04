@@ -61,6 +61,9 @@ contract RewardPoolImplementation is
     /// @notice Pool configuration struct containing token, treasury, factory addresses and timestamp
     PoolConfig public poolConfig;
 
+    /// @notice Address of the pool creator (who can withdraw funds)
+    address public creator;
+
     // Cumulative claim tracking
     /// @notice Tracks cumulative amount already claimed per account
     mapping(address => uint256) public alreadyClaimed; // Cumulative amount already claimed
@@ -99,11 +102,18 @@ contract RewardPoolImplementation is
      * @param token_ Token address for rewards
      * @param platformTreasury_ Treasury address for fees
      * @param factory_ Factory address for governance
+     * @param creator_ Address of the pool creator
      */
-    function initialize(address token_, address platformTreasury_, address factory_) external initializer {
+    function initialize(
+        address token_,
+        address platformTreasury_,
+        address factory_,
+        address creator_
+    ) external initializer {
         if (token_ == address(0)) revert InvalidParameter("token");
         if (platformTreasury_ == address(0)) revert InvalidParameter("treasury");
         if (factory_ == address(0)) revert InvalidParameter("factory");
+        if (creator_ == address(0)) revert InvalidParameter("creator");
 
         // Initialize inherited contracts (NO AccessControl)
         __Pausable_init();
@@ -118,7 +128,7 @@ contract RewardPoolImplementation is
             lastClaimTimestamp: block.timestamp
         });
 
-        // Creator gets no special roles (factory creates pools, not direct admin)
+        creator = creator_;
     }
 
     // ----------- Funding Functions ----------- //
@@ -175,6 +185,23 @@ contract RewardPoolImplementation is
             // Permit failed - revert with custom error
             revert SecurityViolation("permit");
         }
+    }
+
+    /**
+     * @notice Withdraw funds from the pool (creator only)
+     * @param amount Amount to withdraw
+     */
+    function withdraw(uint256 amount) external nonReentrant whenNotPaused {
+        if (msg.sender != creator) revert Unauthorized("creator");
+        if (amount == 0) revert InvalidParameter("amount");
+
+        IERC20 tokenContract = IERC20(poolConfig.token);
+        uint256 balance = tokenContract.balanceOf(address(this));
+        if (balance < amount) revert InvalidParameter("balance");
+
+        tokenContract.safeTransfer(creator, amount);
+
+        emit Withdrawn(creator, poolConfig.token, amount);
     }
 
     // ----------- Claim Functions ----------- //
@@ -351,6 +378,12 @@ contract RewardPoolImplementation is
     /// @param token Token address that was funded
     /// @param amount Amount of tokens funded
     event Funded(address indexed funder, address indexed token, uint256 indexed amount);
+
+    /// @notice Emitted when funds are withdrawn by creator
+    /// @param creator Address that withdrew the funds
+    /// @param token Token address that was withdrawn
+    /// @param amount Amount of tokens withdrawn
+    event Withdrawn(address indexed creator, address indexed token, uint256 indexed amount);
 
     // Optimized event for massive claims volume (2 indexed params)
     /// @notice Emitted when a claim is processed (minimal event for gas efficiency)

@@ -75,7 +75,8 @@ describe("RewardPoolImplementation", function () {
             await expect(implementation.initialize(
                 await testToken.getAddress(),
                 treasury.address,
-                await factory.getAddress()
+                await factory.getAddress(),
+                creator.address
             )).to.be.revertedWithCustomError(implementation, "InvalidInitialization");
         });
 
@@ -83,7 +84,8 @@ describe("RewardPoolImplementation", function () {
             await expect(vault.initialize(
                 await testToken.getAddress(),
                 treasury.address,
-                await factory.getAddress()
+                await factory.getAddress(),
+                creator.address
             )).to.be.revertedWithCustomError(implementation, "InvalidInitialization");
         });
     });
@@ -320,6 +322,98 @@ describe("RewardPoolImplementation", function () {
             // Target: < 100k gas for subsequent claims
             console.log(`Subsequent claim gas used: ${receipt!.gasUsed.toString()}`);
             expect(receipt!.gasUsed).to.be.lessThan(120000);
+        });
+    });
+
+    describe("Withdrawal", function () {
+        const FUND_AMOUNT = ethers.parseUnits("1000", 18);
+        const WITHDRAW_AMOUNT = ethers.parseUnits("500", 18);
+
+        beforeEach(async function () {
+            // Fund vault first
+            await testToken.mint(funder.address, FUND_AMOUNT);
+            await testToken.connect(funder).approve(await vault.getAddress(), FUND_AMOUNT);
+            await vault.connect(funder).fund(FUND_AMOUNT);
+        });
+
+        it("Should allow creator to withdraw funds", async function () {
+            const initialCreatorBalance = await testToken.balanceOf(creator.address);
+            const initialVaultBalance = await testToken.balanceOf(await vault.getAddress());
+
+            await expect(vault.connect(creator).withdraw(WITHDRAW_AMOUNT))
+                .to.emit(vault, "Withdrawn")
+                .withArgs(creator.address, await testToken.getAddress(), WITHDRAW_AMOUNT);
+
+            expect(await testToken.balanceOf(creator.address)).to.equal(initialCreatorBalance + WITHDRAW_AMOUNT);
+            expect(await testToken.balanceOf(await vault.getAddress())).to.equal(initialVaultBalance - WITHDRAW_AMOUNT);
+        });
+
+        it("Should allow creator to withdraw all funds", async function () {
+            const vaultBalance = await testToken.balanceOf(await vault.getAddress());
+            const initialCreatorBalance = await testToken.balanceOf(creator.address);
+
+            await expect(vault.connect(creator).withdraw(vaultBalance))
+                .to.emit(vault, "Withdrawn")
+                .withArgs(creator.address, await testToken.getAddress(), vaultBalance);
+
+            expect(await testToken.balanceOf(creator.address)).to.equal(initialCreatorBalance + vaultBalance);
+            expect(await testToken.balanceOf(await vault.getAddress())).to.equal(0);
+        });
+
+        it("Should reject withdrawal from non-creator", async function () {
+            await expect(vault.connect(funder).withdraw(WITHDRAW_AMOUNT))
+                .to.be.revertedWithCustomError(vault, "Unauthorized")
+                .withArgs("creator");
+        });
+
+        it("Should reject zero amount withdrawal", async function () {
+            await expect(vault.connect(creator).withdraw(0))
+                .to.be.revertedWithCustomError(vault, "InvalidParameter")
+                .withArgs("amount");
+        });
+
+        it("Should reject withdrawal exceeding balance", async function () {
+            const vaultBalance = await testToken.balanceOf(await vault.getAddress());
+            const excessiveAmount = vaultBalance + ethers.parseUnits("1", 18);
+
+            await expect(vault.connect(creator).withdraw(excessiveAmount))
+                .to.be.revertedWithCustomError(vault, "InvalidParameter")
+                .withArgs("balance");
+        });
+
+        it("Should reject withdrawal when paused", async function () {
+            await vault.connect(guardian).pause();
+
+            await expect(vault.connect(creator).withdraw(WITHDRAW_AMOUNT))
+                .to.be.revertedWithCustomError(vault, "EnforcedPause");
+        });
+
+        it("Should work with mixed funding and withdrawals", async function () {
+            // Withdraw some
+            await vault.connect(creator).withdraw(WITHDRAW_AMOUNT);
+            
+            // Add more funding
+            await testToken.mint(funder.address, FUND_AMOUNT);
+            await testToken.connect(funder).approve(await vault.getAddress(), FUND_AMOUNT);
+            await vault.connect(funder).fund(FUND_AMOUNT);
+            
+            // Withdraw again
+            const remainingBalance = await testToken.balanceOf(await vault.getAddress());
+            await expect(vault.connect(creator).withdraw(remainingBalance))
+                .to.emit(vault, "Withdrawn");
+        });
+
+        it("Should handle withdrawal after claims correctly", async function () {
+            // Make a claim first
+            const CLAIM_AMOUNT = ethers.parseUnits("100", 18);
+            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
+
+            // Now try to withdraw remaining balance
+            const vaultBalance = await testToken.balanceOf(await vault.getAddress());
+            await expect(vault.connect(creator).withdraw(vaultBalance))
+                .to.emit(vault, "Withdrawn")
+                .withArgs(creator.address, await testToken.getAddress(), vaultBalance);
         });
     });
 

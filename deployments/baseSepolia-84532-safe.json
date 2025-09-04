@@ -1,18 +1,18 @@
 {
   "network": "baseSepolia",
   "chainId": 84532,
-  "timestamp": "2025-08-31T12:32:00.526Z",
+  "timestamp": "2025-09-02T19:39:26.972Z",
   "contracts": {
-    "implementation": "0x2767d6822fd4BAf1434B6b48Af4eE4D5557EcBd7",
-    "factory": "0x57895ebA2752adf2Cb492713C5BC5B12Fc6c834e",
-    "claimRouter": "0xd09386Bad9Cf557f8885Accbef9B204F49c06907",
+    "implementation": "0x1020E62F81c8ffb2aCed14F2fBbc092A1F1de6A9",
+    "factory": "0x1f7D82ccB742593118c91B0d5Ef34Dc6e41676bf",
+    "claimRouter": "0x1BFC02a7131Db713Fc25f7BeA0e4bE2CF065CFba",
     "tokens": {
       "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "weth": "0x4200000000000000000000000000000000000006",
       "clones": "0x15eB86c7E54B350bf936d916Df33AEF697202E29"
     },
     "testPools": {
-      "usdcPool": "0x8543bD8D1B996B7dB2d13c3B854ba26623304cfD"
+      "usdcPool": "0x9032D89209EBEe4157786d340975F00fB7b78b11"
     }
   },
   "config": {
@@ -22,8 +22,8 @@
     "publisher": "0x88b61192CdfCED65e969BD58fd37D48498dd69DE"
   },
   "verification": {
-    "implementation": "npx hardhat verify --network baseSepolia 0x2767d6822fd4BAf1434B6b48Af4eE4D5557EcBd7",
-    "factory": "npx hardhat verify --network baseSepolia 0x57895ebA2752adf2Cb492713C5BC5B12Fc6c834e \"0x2767d6822fd4BAf1434B6b48Af4eE4D5557EcBd7\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\"",
-    "claimRouter": "npx hardhat verify --network baseSepolia 0xd09386Bad9Cf557f8885Accbef9B204F49c06907 \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\""
+    "implementation": "npx hardhat verify --network baseSepolia 0x1020E62F81c8ffb2aCed14F2fBbc092A1F1de6A9",
+    "factory": "npx hardhat verify --network baseSepolia 0x1f7D82ccB742593118c91B0d5Ef34Dc6e41676bf \"0x1020E62F81c8ffb2aCed14F2fBbc092A1F1de6A9\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\" \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\"",
+    "claimRouter": "npx hardhat verify --network baseSepolia 0x1BFC02a7131Db713Fc25f7BeA0e4bE2CF065CFba \"0x88b61192CdfCED65e969BD58fd37D48498dd69DE\""
   }
 }
