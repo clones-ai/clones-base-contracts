@@ -430,9 +430,9 @@ describe("RewardPoolFactory", function () {
             const tx = await factory.connect(creator).createPool(await testToken.getAddress());
             const receipt = await tx.wait();
 
-            // Target: < 300k gas for pool creation (revised for actual costs)
+            // Target: < 320k gas for pool creation (adjusted for creator parameter)
             console.log(`Pool creation gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(300000);
+            expect(receipt!.gasUsed).to.be.lessThan(320000);
         });
 
         it("Should benchmark create and fund pool gas efficiency", async function () {
