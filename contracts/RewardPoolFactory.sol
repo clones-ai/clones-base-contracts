@@ -30,6 +30,8 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     // Grace period for publisher rotation overlap
     /// @notice Grace period for publisher rotation
     uint256 public constant PUBLISHER_GRACE_PERIOD = 7 days;
+    /// @notice Minimum interval between publisher rotations to prevent spam
+    uint256 public constant MIN_ROTATION_INTERVAL = 1 hours;
 
     // ----------- Immutable State ----------- //
     /// @notice Address of the pool implementation contract for cloning
@@ -48,6 +50,10 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     address public oldPublisher; // Previous publisher during grace period
     /// @notice Timestamp when grace period ends
     uint256 public graceEndTime; // When grace period for old publisher ends
+    /// @notice Timestamp of the last publisher rotation to prevent spam
+    uint256 public lastRotationTime; // Prevents rotation spam attacks
+    /// @notice Emergency revoked publishers (cannot sign anymore)
+    mapping(address => bool) public revokedPublishers; // Emergency revocation list
 
     // ----------- Governance ----------- //
     /// @notice Mapping of allowed token addresses
@@ -101,6 +107,11 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     /// @param restoredPublisher Publisher address that was restored
     /// @param cancelledPublisher Publisher address that was cancelled
     event PublisherRotationCancelled(address indexed restoredPublisher, address indexed cancelledPublisher);
+    /// @notice Emitted when a publisher is emergency revoked
+    /// @param revokedPublisher Publisher address that was revoked
+    /// @param revokedBy Address that initiated the revocation
+    /// @param reason Reason for revocation
+    event PublisherEmergencyRevoked(address indexed revokedPublisher, address indexed revokedBy, string reason);
 
     // ----------- Modifiers ----------- //
     modifier onlyFactoryTimelock() {
@@ -269,9 +280,10 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      * @param nonce Nonce for deterministic creation
      * @return Salt for CREATE2
      */
-    function _computeSalt(address creator, address token, uint256 nonce) internal pure returns (bytes32) {
+    function _computeSalt(address creator, address token, uint256 nonce) internal view returns (bytes32) {
         // EXACT ABI encoding: deterministic by creator + token pair
-        return keccak256(abi.encode(creator, token, nonce));
+        // Note: Enhanced entropy with chainid() to prevent cross-chain collisions
+        return keccak256(abi.encode(creator, token, nonce, block.chainid));
     }
 
     // ----------- Publisher Management ----------- //
@@ -283,6 +295,23 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
      */
     function getPublisherInfo() external view returns (address current, address old, uint256 graceEnd) {
         return (publisher, oldPublisher, graceEndTime);
+    }
+
+    /**
+     * @notice Check if a publisher is valid (not revoked and either current or in grace period)
+     * @param publisherToCheck Address to check
+     * @return valid Whether the publisher can sign claims
+     */
+    function isValidPublisher(address publisherToCheck) external view returns (bool valid) {
+        if (revokedPublishers[publisherToCheck]) return false;
+
+        if (publisherToCheck == publisher) return true;
+
+        if (graceEndTime > 0 && block.timestamp < graceEndTime && publisherToCheck == oldPublisher) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -300,14 +329,26 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     function initiatePublisherRotation(address newPublisher) external onlyFactoryTimelock {
         if (newPublisher == address(0)) revert InvalidParameter("publisher");
         if (newPublisher == publisher) revert InvalidParameter("publisher");
+
+        // Enforce minimum cooldown period between rotations
+        // Check cooldown BEFORE checking active rotation to prevent cooldown bypass
+        if (block.timestamp < lastRotationTime + MIN_ROTATION_INTERVAL) {
+            revert SecurityViolation("cooldown_active");
+        }
+
         if (graceEndTime > block.timestamp) revert AlreadyExists("rotation");
 
-        // IMMEDIATE transition - no pending period
-        oldPublisher = publisher; // Store current for grace period
-        publisher = newPublisher; // IMMEDIATE activation
-        graceEndTime = block.timestamp + PUBLISHER_GRACE_PERIOD; // 7 days overlap
+        // Capture current state before any modifications
+        address previousPublisher = publisher;
+        uint256 rotationTimestamp = block.timestamp;
 
-        emit PublisherRotationInitiated(oldPublisher, newPublisher, graceEndTime);
+        // Apply all state changes atomically
+        oldPublisher = previousPublisher; // Store current for grace period
+        publisher = newPublisher; // IMMEDIATE activation
+        graceEndTime = rotationTimestamp + PUBLISHER_GRACE_PERIOD; // 7 days overlap
+        lastRotationTime = rotationTimestamp; // Update rotation timestamp
+
+        emit PublisherRotationInitiated(previousPublisher, newPublisher, graceEndTime);
     }
 
     /**
@@ -318,16 +359,45 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
         if (graceEndTime == 0) revert InvalidParameter("no_rotation");
         if (block.timestamp >= graceEndTime) revert SecurityViolation("grace_period");
 
-        // Capture current state BEFORE modification for accurate event emission
+        // Capture current state BEFORE any modifications
         address cancelledPublisher = publisher; // The publisher being cancelled (new one)
         address restoredPublisher = oldPublisher; // The publisher being restored (old one)
 
-        publisher = oldPublisher; // Restore old publisher
+        // Apply all state changes atomically
+        publisher = restoredPublisher; // Restore old publisher
         oldPublisher = address(0); // Clear old
         graceEndTime = 0; // End grace period immediately
+        lastRotationTime = block.timestamp; // Update rotation timestamp
 
         // EVENT REFLECTS ACTUAL STATE: restored (old) and cancelled (new)
         emit PublisherRotationCancelled(restoredPublisher, cancelledPublisher);
+    }
+
+    /**
+     * @notice Emergency revocation of a publisher (immediate effect)
+     * @dev This function immediately prevents a publisher from signing new claims
+     * @param publisherToRevoke Publisher address to revoke
+     * @param reason Public justification for emergency revocation
+     */
+    function emergencyRevokePublisher(address publisherToRevoke, string calldata reason) external onlyFactoryGuardian {
+        if (publisherToRevoke == address(0)) revert InvalidParameter("publisher");
+        if (revokedPublishers[publisherToRevoke]) revert AlreadyExists("revocation");
+
+        // Mark as revoked immediately
+        revokedPublishers[publisherToRevoke] = true;
+
+        // If current publisher is revoked, clear it to force rotation
+        if (publisherToRevoke == publisher) {
+            publisher = address(0);
+        }
+
+        // If old publisher is revoked, clear grace period
+        if (publisherToRevoke == oldPublisher) {
+            oldPublisher = address(0);
+            graceEndTime = 0;
+        }
+
+        emit PublisherEmergencyRevoked(publisherToRevoke, msg.sender, reason);
     }
 
     // ----------- Emergency Controls ----------- //
@@ -344,6 +414,22 @@ contract RewardPoolFactory is AccessControl, Pausable, ReentrancyGuard {
     function unpause() external onlyFactoryTimelock {
         _unpause();
     }
+
+    /**
+     * @notice Emergency pause all claims immediately (front-running protection)
+     * @dev This function pauses the factory which prevents new pool creation
+     *      Individual pools can still be paused via their own pause functions
+     */
+    function emergencyPauseAll() external onlyFactoryGuardian {
+        _pause();
+        emit EmergencyPauseAll(msg.sender, block.timestamp);
+    }
+
+    // ----------- Events ----------- //
+    /// @notice Emitted when emergency pause all is triggered
+    /// @param guardian Guardian address that triggered the pause
+    /// @param timestamp Block timestamp
+    event EmergencyPauseAll(address indexed guardian, uint256 indexed timestamp);
 }
 
 /**

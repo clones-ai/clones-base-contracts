@@ -1,0 +1,23 @@
+# Echidna Configuration for RewardPool Core Logic Fuzzing
+
+testMode: property
+testLimit: 50000        # 50000 transactions for thorough testing
+seqLen: 50              # 50 transactions per sequence
+
+coverage: true
+corpusDir: "corpus-rewardpool"
+
+cryticArgs: ["--compile-force-framework", "hardhat"]
+
+checkAsserts: true
+
+timeout: 600            # 10 minute timeout
+stopOnFail: false
+
+format: "text"
+quiet: false
+
+sender: ["0x00a329c0648769a73afac7f9381e08fb43dbea72"]
+
+seed: 42
+

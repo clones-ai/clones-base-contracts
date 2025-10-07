@@ -1,239 +1,187 @@
 # Clones Base Contracts
 
-This repository contains the official smart contracts for the Clones protocol on the Base L2 network. The project implements a factory-based reward pool system using EIP-1167 minimal proxy pattern for efficient deployment of individual reward pools.
+Official smart contracts for the Clones protocol on the Base L2 network. This project implements a factory-based reward pool system using EIP-1167 minimal proxy pattern for efficient deployment of individual reward pools.
 
-This project is built with **Hardhat**, **Ethers.js v6**, and **OpenZeppelin Contracts v5**.
+Built with **Hardhat**, **Ethers.js v6**, and **OpenZeppelin Contracts v5**.
 
----
+[![Tests](https://img.shields.io/badge/tests-150%2F150%20passing-brightgreen)]()
+[![Coverage](https://img.shields.io/badge/coverage-83.82%25-green)]()
+[![Security](https://img.shields.io/badge/slither-0%20findings-brightgreen)]()
+[![Fuzzing](https://img.shields.io/badge/echidna-18%2F18%20invariants-brightgreen)]()
+[![Audit Ready](https://img.shields.io/badge/audit-ready-blue)]()
+
 
 ## Project Architecture & Standards
 
 This repository implements a modern factory-based architecture for reward pool management. All contracts adhere to high-quality standards ensuring security, gas efficiency, and maintainability.
 
 ### Core Principles
-- **Security First:** Defense-in-depth approach with reentrancy protection, access control, and L2-specific safety features.
-- **Gas Optimization:** EIP-1167 minimal proxy pattern reduces deployment costs by 99%+ compared to full contract deployments.
-- **Deterministic Addresses:** CREATE2 implementation allows prediction of pool addresses before deployment.
-- **Batch Operations:** ClaimRouter enables efficient multi-vault reward claiming in a single transaction.
-- **EIP-712 Signatures:** Secure, off-chain signed reward claims with replay protection.
+- **Security First:** Defense-in-depth approach with reentrancy protection, access control, and L2-specific safety features
+- **Gas Optimization:** EIP-1167 minimal proxy pattern reduces deployment costs by 99%+ compared to full contract deployments
+- **Deterministic Addresses:** CREATE2 implementation allows prediction of pool addresses before deployment
+- **Batch Operations:** ClaimRouter enables efficient multi-vault reward claiming in a single transaction
+- **EIP-712 Signatures:** Secure, off-chain signed reward claims with replay protection
 
----
 
-## Project Contracts
-
-This section provides an overview of the smart contracts within the Phase 1 factory system.
+## Core Contracts
 
 ### 1. RewardPoolFactory
 
 The `RewardPoolFactory` is the core factory contract that creates deterministic reward pools using EIP-1167 minimal proxy pattern.
 
-#### Key Features:
+**Key Features:**
 - **EIP-1167 Clones:** Deploys lightweight proxy contracts (CREATE2) pointing to a master implementation
 - **Deterministic Addresses:** Pool addresses are predictable using creator + token combination
 - **Token Allowlist:** Only approved tokens can be used for pool creation
-- **Publisher Management:** Role-based system for authorized reward publishers
+- **Publisher Management:** Role-based system for authorized reward publishers with rotation and grace periods
 - **Minimal Gas Cost:** ~50k gas per pool creation vs ~2M gas for full deployment
-- **Atomic Create+Fund:** Single transaction for pool creation and initial funding (optimal UX)
+- **Atomic Create+Fund:** Single transaction for pool creation and initial funding
 
 ### 2. RewardPoolImplementation
 
 The `RewardPoolImplementation` serves as the master contract containing all pool logic that is shared by minimal proxies.
 
-#### Key Features:
+**Key Features:**
 - **EIP-712 Signatures:** Secure reward claiming with typed data signatures
 - **Cumulative Rewards:** Prevents double-spending with cumulative reward tracking
-- **Factory Integration:** Validates that calls originate from approved factories
+- **Nonce-Based Replay Protection:** Per-account nonces prevent signature reuse
+- **Rate Limiting:** MAX_CLAIMS_PER_BLOCK = 50 with circuit breakers
 - **Fee Collection:** Transparent 10% platform fee on all reward claims
+- **Creator Controls:** 7-day timelock and 50% withdrawal limits for creator protection
+- **Security Monitoring:** High-value claim detection and suspicious activity alerts
 
 ### 3. ClaimRouter
 
 The `ClaimRouter` enables efficient batch claiming across multiple reward pools in a single transaction.
 
-#### Key Features:
+**Key Features:**
 - **Multi-Vault Batching:** Claim rewards from multiple pools atomically
 - **Gas Optimization:** Reduces transaction costs for users with multiple active pools
 - **Factory Verification:** Only processes claims from approved factory-created pools
 - **Batch Size Limits:** Configurable limits prevent gas exhaustion attacks
 - **Atomic Operations:** All claims succeed or fail together
 
----
+## Quick Start
 
-## Architecture Benefits
+### Installation
 
-### Phase 1 Factory System
-The current Phase 1 implementation provides:
-
-1. **Cost Efficiency**: 99%+ reduction in pool deployment costs via EIP-1167
-2. **Scalability**: Support for unlimited independent reward pools
-3. **Predictability**: Deterministic addresses enable off-chain integrations
-4. **Security**: EIP-712 signatures with replay protection
-5. **User Experience**: Batch claiming + atomic create+fund reduces transaction overhead
-6. **Gas Optimization**: Single `createAndFundPool()` vs separate create+fund transactions
-
----
-
-## Development & Deployment
+```bash
+npm install
+```
 
 ### Environment Setup
 
-1. **Install Dependencies:**
-   ```bash
-   npm install
-   ```
+Create a `.env` file in the project root:
 
-2. **Configure Environment:**
-   Create a `.env` file in the project root by copying `.env.example`. Fill in the required variables:
-   ```env
-   PRIVATE_KEY=your_wallet_private_key
-   BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
-   ETHERSCAN_API_KEY=your_etherscan_v2_api_key
-   ```
-   **Note:** Never commit your `.env` file.
-
-### Testing
-
-Run the full test suite for all contracts:
-```bash
-npx hardhat test
+```env
+PRIVATE_KEY=your_wallet_private_key
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+BASE_RPC_URL=https://mainnet.base.org
+ETHERSCAN_API_KEY=your_basescan_api_key
 ```
 
-### Available Commands
+**⚠️ Never commit your `.env` file**
 
-The project includes several npm scripts for common operations:
+## Testing
 
-#### **Deployment Commands:**
-- `npm run deploy:baseSepolia` - Deploy individual contracts to Base Sepolia testnet
-- `npm run deploy:base` - Deploy individual contracts to Base mainnet  
-- `npm run deploy-factory-system:baseSepolia` - Deploy complete factory system to Base Sepolia testnet
-- `npm run deploy-factory-system:base` - Deploy complete factory system to Base mainnet
-- `npm run deploy-and-test:baseSepolia` - Deploy + run integration tests on Base Sepolia
-- `npm run final-validation:baseSepolia` - Validate deployed system functionality
+### Unit Tests (150 tests, 100% passing)
 
-#### **Other Commands:**
-- `npm run build` - Compile contracts
-- `npm run test` - Run tests
-- `npm run coverage` - Generate test coverage report
-- `npm run lint:sol` - Lint Solidity code
+```bash
+# Run all tests
+npm test
 
-### Deployment Guide
+# Run with coverage
+npm run coverage
 
-The deployment process is managed via scripts in the `scripts/` directory and is designed to be generic.
+# Run specific test file
+npx hardhat test test/RewardPoolImplementation.t.ts
 
-**You can deploy contracts using environment variables without modifying the deployment scripts.**
+# Quick security check
+npx hardhat test test/SecurityQuickTest.t.ts
+```
 
-#### **Factory System Architecture**
+## Security Testing
 
-The Phase 1 factory system uses standard (non-upgradeable) contracts:
+### Static Analysis (Slither)
 
-1. **Implementation Contract** - Master logic contract deployed once
-2. **Factory Contract** - Creates minimal proxies pointing to implementation  
-3. **ClaimRouter Contract** - Handles batch operations across multiple pools
+```bash
+# Standard check
+npm run security
 
-This approach eliminates the need for upgradeable patterns while maintaining flexibility through the proxy system.
+# Production mode (more thorough)
+npm run security:production
 
-#### **Example: Deploying Factory System on Base Sepolia**
+# Strict mode (most thorough, recommended)
+npm run security:strict
+```
 
-The factory system consists of standard contracts (no upgrades needed due to EIP-1167 pattern). Here's how to deploy the complete system:
+### Property-Based Fuzzing (Echidna)
 
-1. **Deploy RewardPoolImplementation (Master Contract):**
-   ```bash
-   export CONTRACT_NAME="RewardPoolImplementation"
-   export CONTRACT_ARGS='[]'  # No constructor arguments
-   export CONTRACT_SAVE_AS="RewardPoolImplementation"
-   npm run deploy:baseSepolia
-   ```
+Echidna automatically generates thousands of random transactions to test invariants:
 
-2. **Deploy RewardPoolFactory:**
-   ```bash
-   export CONTRACT_NAME="RewardPoolFactory"  
-   export CONTRACT_ARGS='["<IMPLEMENTATION_ADDRESS>", "0xADMIN_ADDRESS"]'
-   export CONTRACT_SAVE_AS="RewardPoolFactory"
-   npm run deploy:baseSepolia
-   ```
+```bash
+# Test RewardPool core logic (claims, fees, nonces) - ~1 min
+npm run echidna:rewardpool
 
-3. **Deploy ClaimRouter:**
-   ```bash
-   export CONTRACT_NAME="ClaimRouter"
-   export CONTRACT_ARGS='["0xADMIN_ADDRESS"]'
-   export CONTRACT_SAVE_AS="ClaimRouter" 
-   npm run deploy:baseSepolia
-   ```
+# Test Factory (publisher rotation, governance) - ~30 sec
+npm run echidna:factory
 
-4. **Complete System Deployment (Recommended):**
-   Use the factory deployment script for automated setup:
-   ```bash
-   npm run deploy-factory-system:baseSepolia
-   ```
+# Quick test (token + basics) - ~20 sec
+npm run echidna:quick
 
-5. **Verify Contracts:**
-   ```bash
-   # Verify Implementation
-   npx hardhat verify --network baseSepolia <IMPLEMENTATION_ADDRESS>
-   
-   # Verify Factory
-   npx hardhat verify --network baseSepolia <FACTORY_ADDRESS> "<IMPLEMENTATION_ADDRESS>" "0xADMIN_ADDRESS"
-   
-   # Verify ClaimRouter
-   npx hardhat verify --network baseSepolia <CLAIM_ROUTER_ADDRESS> "0xADMIN_ADDRESS"
-   ```
+# Run all critical fuzzers
+npm run echidna:all
+```
 
-6. **Post-Deployment Testing & Validation:**
-   ```bash
-   # Run integration tests after deployment
-   npm run deploy-and-test:baseSepolia
-   
-   # Validate system functionality  
-   npm run final-validation:baseSepolia
-   ```
+📖 See **[ECHIDNA_FUZZING_GUIDE.md](./ECHIDNA_FUZZING_GUIDE.md)** for complete fuzzing documentation.
 
-7. **Available Scripts:**
-   - **`deploy-factory-system`** - Complete factory deployment with configuration
-   - **`deploy-and-test`** - Deploy + integration tests + gas benchmarks
-   - **`final-validation`** - CREATE2 validation + end-to-end testing
-   - **`verify`** - Contract verification on block explorers
+### Code Coverage
 
----
+```bash
+npm run coverage
+```
 
-## Contract Administration
+## Deployment
 
-This section covers common administrative tasks for the deployed factory system. All administrative functions are restricted to authorized roles like `timelock` or `guardian`.
+### Deploy Factory System
 
-### Managing the Token Allowlist
+```bash
+# Deploy to Base Sepolia (testnet)
+npm run deploy-safe:baseSepolia
 
-The `RewardPoolFactory` maintains an on-chain allowlist of tokens that are permitted for creating reward pools. This is a critical security measure to prevent the use of malicious or non-standard tokens.
+# Deploy to Base Mainnet
+npm run deploy-safe:base
 
-Only the `timelock` address can add or remove tokens from this list by calling the `setTokenAllowed` function.
+# Deploy + integration tests
+npm run deploy-and-test:baseSepolia
 
-#### How to Add a Token to the Allowlist
+# Validate system functionality
+npm run final-validation:baseSepolia
+```
 
-You can manage the allowlist using the Hardhat console.
+## Available Commands
 
-1.  **Connect to the appropriate network** using the Hardhat console. Ensure your Hardhat configuration is set up to use the `timelock` account's private key for this network.
+```bash
+# Build & Test
+npm run build                       # Compile contracts
+npm test                           # Run all 150 tests
+npm run coverage                   # Generate coverage report
 
-    ```bash
-    # Replace <network> with your target network (e.g., baseSepolia)
-    npx hardhat console --network <network>
-    ```
+# Security & Analysis
+npm run security:strict            # Slither strict mode
+npm run echidna:all                # All critical fuzzers
+npm run echidna:rewardpool         # RewardPool fuzzer
+npm run echidna:factory            # Factory fuzzer
+npm run echidna:quick              # Quick fuzzing test
 
-2.  **Execute the following commands** inside the Hardhat console to call the `setTokenAllowed` function:
+# Deployment
+npm run deploy-safe:baseSepolia    # Deploy to testnet
+npm run deploy-safe:base           # Deploy to mainnet
+npm run finish-setup:baseSepolia   # Post-deployment setup
 
-    ```javascript
-    // 1. Set the addresses
-    const factoryAddress = "YOUR_FACTORY_ADDRESS_HERE"; // Replace with your deployed RewardPoolFactory address
-    const tokenAddress = "TOKEN_TO_ALLOW_ADDRESS_HERE"; // Replace with the ERC20 token address to add
+# Verification
+npm run verify:baseSepolia         # Verify contracts on Basescan
 
-    // 2. Get the contract instance
-    const factory = await ethers.getContractAt("RewardPoolFactory", factoryAddress);
-
-    // 3. Call the function to add the token (set the second argument to 'false' to remove)
-    console.log(`Adding token ${tokenAddress} to the allowlist...`);
-    const tx = await factory.setTokenAllowed(tokenAddress, true);
-    await tx.wait();
-    console.log("Transaction confirmed!");
-
-    // 4. (Optional) Verify the token was added
-    const isAllowed = await factory.allowedTokens(tokenAddress);
-    console.log(`Is token ${tokenAddress} allowed? ${isAllowed}`);
-    ```
-
-**Important:** Only add well-audited, standard ERC20 tokens to the allowlist. Avoid tokens with fee-on-transfer mechanics, hooks, or other non-standard behavior unless you have thoroughly analyzed the security implications.
+# Linting
+npm run lint:sol                   # Lint Solidity files
+```

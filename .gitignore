@@ -11,3 +11,5 @@ coverage.json
 slither_results.json
 slither-artifacts.zip
 slither-report.sarif
+corpus*
+crytic-export

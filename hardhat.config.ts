@@ -19,7 +19,18 @@ const config: HardhatUserConfig = {
     solidity: {
         version: "0.8.30",
         settings: {
-            optimizer: { enabled: true, runs: 600 }
+            optimizer: { enabled: true, runs: 600 },
+            viaIR: true,
+            modelChecker: {
+                engine: "all",
+                targets: ["assert", "underflow", "overflow", "divByZero", "constantCondition", "popEmptyArray", "outOfBounds"],
+                timeout: 30000,
+                contracts: {
+                    "contracts/RewardPoolImplementation.sol": ["RewardPoolImplementation"],
+                    "contracts/RewardPoolFactory.sol": ["RewardPoolFactory"],
+                    "contracts/ClaimRouter.sol": ["ClaimRouter"]
+                }
+            }
         }
     },
 

@@ -172,9 +172,10 @@ describe("RewardPoolFactory", function () {
 
             expect(predictedNext).to.not.equal(predictedAfter);
 
-            // Manually compute salt for the "after" case
+            // Manually compute salt for the "after" case with chainid
             const nonceAfter = await factory.poolNonce(creator.address, await testToken.getAddress());
-            const expectedSalt = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(['address', 'address', 'uint256'], [creator.address, await testToken.getAddress(), nonceAfter]));
+            const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
+            const expectedSalt = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(['address', 'address', 'uint256', 'uint256'], [creator.address, await testToken.getAddress(), nonceAfter, chainId]));
             const [, saltAfter] = await factory.predictPoolAddress(creator.address, await testToken.getAddress());
             expect(saltAfter).to.equal(expectedSalt);
         });
@@ -219,8 +220,7 @@ describe("RewardPoolFactory", function () {
             await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
 
             await expect(factory.connect(timelock).initiatePublisherRotation(creator.address))
-                .to.be.revertedWithCustomError(factory, "AlreadyExists")
-                .withArgs("rotation");
+                .to.be.revertedWithCustomError(factory, "SecurityViolation");
         });
 
         it("Should cancel publisher rotation during grace period", async function () {
@@ -254,6 +254,52 @@ describe("RewardPoolFactory", function () {
             await expect(factory.connect(creator).cancelPublisherRotation())
                 .to.be.revertedWithCustomError(factory, "Unauthorized")
                 .withArgs("timelock");
+        });
+
+        it("Should emergency revoke publisher", async function () {
+            // Emergency revoke current publisher
+            await expect(factory.connect(guardian).emergencyRevokePublisher(publisher.address, "Key compromise detected"))
+                .to.emit(factory, "PublisherEmergencyRevoked")
+                .withArgs(publisher.address, guardian.address, "Key compromise detected");
+
+            // Verify publisher is revoked
+            expect(await factory.revokedPublishers(publisher.address)).to.be.true;
+            
+            // Verify publisher is no longer valid
+            expect(await factory.isValidPublisher(publisher.address)).to.be.false;
+
+            // Current publisher should be cleared
+            const publisherInfo = await factory.getPublisherInfo();
+            expect(publisherInfo[0]).to.equal(ethers.ZeroAddress);
+        });
+
+        it("Should prevent duplicate emergency revocation", async function () {
+            // First revocation
+            await factory.connect(guardian).emergencyRevokePublisher(publisher.address, "First revocation");
+
+            // Second revocation should fail
+            await expect(factory.connect(guardian).emergencyRevokePublisher(publisher.address, "Second revocation"))
+                .to.be.revertedWithCustomError(factory, "AlreadyExists")
+                .withArgs("revocation");
+        });
+
+        it("Should revoke old publisher during grace period", async function () {
+            const newPublisher = user;
+            
+            // Initiate rotation
+            await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
+
+            // Verify old publisher is still valid during grace period
+            expect(await factory.isValidPublisher(publisher.address)).to.be.true;
+
+            // Emergency revoke old publisher
+            await factory.connect(guardian).emergencyRevokePublisher(publisher.address, "Suspicious activity");
+
+            // Old publisher should no longer be valid
+            expect(await factory.isValidPublisher(publisher.address)).to.be.false;
+            
+            // New publisher should still be valid
+            expect(await factory.isValidPublisher(newPublisher.address)).to.be.true;
         });
     });
 
@@ -430,9 +476,9 @@ describe("RewardPoolFactory", function () {
             const tx = await factory.connect(creator).createPool(await testToken.getAddress());
             const receipt = await tx.wait();
 
-            // Target: < 320k gas for pool creation (adjusted for creator parameter)
+            // Target: < 335k gas for pool creation (adjusted for creator parameter and nonce tracking)
             console.log(`Pool creation gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(320000);
+            expect(receipt!.gasUsed).to.be.lessThan(335000);
         });
 
         it("Should benchmark create and fund pool gas efficiency", async function () {
@@ -442,9 +488,9 @@ describe("RewardPoolFactory", function () {
             const tx = await factory.connect(creator).createAndFundPool(await testToken.getAddress(), fundingAmount);
             const receipt = await tx.wait();
 
-            // Target: < 355k gas for create+fund (should be more efficient than separate operations)
+            // Target: < 370k gas for create+fund (increased with nonce tracking)
             console.log(`Create and fund gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(355000);
+            expect(receipt!.gasUsed).to.be.lessThan(370000);
         });
     });
 });

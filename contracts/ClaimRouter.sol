@@ -20,6 +20,8 @@ contract ClaimRouter is ReentrancyGuard {
     address public immutable TIMELOCK; // GOVERNANCE: Timelock multisig control
     /// @notice Maximum number of claims that can be processed in a single batch
     uint256 public maxBatchSize = 20; // Configurable batch limit (start conservative)
+    /// @notice Maximum gas allowed per individual claim to prevent griefing
+    uint256 public maxGasPerClaim = 200000; // 200k gas limit per claim
     /// @notice Registry of trusted factory addresses
     mapping(address => bool) public approvedFactories; // Registry of trusted factories
 
@@ -28,6 +30,7 @@ contract ClaimRouter is ReentrancyGuard {
         address vault;
         address account; // Account to pay (verified in signature)
         uint256 cumulativeAmount; // Cumulative pattern
+        uint256 nonce; // Nonce for replay protection
         bytes signature; // Publisher's EIP-712
     }
 
@@ -74,6 +77,17 @@ contract ClaimRouter is ReentrancyGuard {
         emit MaxBatchSizeUpdated(oldSize, newMaxSize);
     }
 
+    /**
+     * @notice Update maximum gas per claim to prevent griefing attacks
+     * @param newMaxGasPerClaim New maximum gas per claim (50k to 500k range)
+     */
+    function setMaxGasPerClaim(uint256 newMaxGasPerClaim) external onlyTimelock {
+        if (newMaxGasPerClaim < 50000 || newMaxGasPerClaim > 500000) revert InvalidParameter("gas_limit");
+        uint256 oldGasLimit = maxGasPerClaim;
+        maxGasPerClaim = newMaxGasPerClaim;
+        emit MaxGasPerClaimUpdated(oldGasLimit, newMaxGasPerClaim);
+    }
+
     // ----------- Claim Functions ----------- //
     /**
      * @notice Batch claim with best-effort semantics and factory validation
@@ -113,33 +127,21 @@ contract ClaimRouter is ReentrancyGuard {
             }
         }
 
-        // Process claims for valid vaults only
+        // Process claims for valid vaults only with gas monitoring
         for (uint256 i = 0; i < claimsLength; ) {
-            if (vaultFactories[i] == address(0)) {
-                unchecked {
-                    ++i;
+            if (vaultFactories[i] != address(0)) {
+                (uint256 gross, uint256 fee, uint256 net, bool success) = _processSingleClaim(
+                    claims[i],
+                    vaultFactories[i]
+                );
+                if (success) {
+                    ++successful;
+                    totalGross += gross;
+                    totalFees += fee;
+                    totalNet += net;
+                } else {
+                    ++failed;
                 }
-                continue;
-            }
-
-            try
-                IVaultClaim(claims[i].vault).payWithSig(
-                    claims[i].account,
-                    claims[i].cumulativeAmount,
-                    claims[i].signature
-                )
-            returns (uint256 gross, uint256 fee, uint256 net) {
-                ++successful;
-                totalGross += gross;
-                totalFees += fee;
-                totalNet += net;
-                emit ClaimSucceeded(claims[i].vault, claims[i].account, vaultFactories[i], gross, fee, net);
-            } catch Error(string memory reason) {
-                ++failed;
-                emit ClaimFailed(claims[i].vault, claims[i].account, reason);
-            } catch {
-                ++failed;
-                emit ClaimFailed(claims[i].vault, claims[i].account, "Low-level failure");
             }
             unchecked {
                 ++i;
@@ -147,6 +149,46 @@ contract ClaimRouter is ReentrancyGuard {
         }
 
         emit BatchClaimed(msg.sender, successful, failed, totalGross, totalFees, totalNet, block.timestamp);
+    }
+
+    // ----------- Internal Functions ----------- //
+    /**
+     * @notice Process a single claim (reduces stack depth)
+     * @param claim Claim data
+     * @param factory Factory address for this vault
+     * @return gross Gross amount
+     * @return fee Fee amount
+     * @return net Net amount
+     * @return success Whether claim succeeded
+     */
+    function _processSingleClaim(
+        ClaimData calldata claim,
+        address factory
+    ) internal returns (uint256 gross, uint256 fee, uint256 net, bool success) {
+        uint256 gasBefore = gasleft();
+
+        try
+            IVaultClaim(claim.vault).payWithSig(
+                claim.account,
+                claim.cumulativeAmount,
+                claim.nonce,
+                claim.signature
+            )
+        returns (uint256 _gross, uint256 _fee, uint256 _net) {
+            if ((gasBefore - gasleft()) > maxGasPerClaim) {
+                emit ClaimFailed(claim.vault, claim.account, "Excessive gas usage detected");
+                return (0, 0, 0, false);
+            } else {
+                emit ClaimSucceeded(claim.vault, claim.account, factory, _gross, _fee, _net);
+                return (_gross, _fee, _net, true);
+            }
+        } catch Error(string memory reason) {
+            emit ClaimFailed(claim.vault, claim.account, reason);
+            return (0, 0, 0, false);
+        } catch {
+            emit ClaimFailed(claim.vault, claim.account, "Low-level failure");
+            return (0, 0, 0, false);
+        }
     }
 
     // ----------- Events ----------- //
@@ -195,6 +237,10 @@ contract ClaimRouter is ReentrancyGuard {
     /// @param oldSize Previous batch size limit
     /// @param newSize New batch size limit
     event MaxBatchSizeUpdated(uint256 indexed oldSize, uint256 indexed newSize);
+    /// @notice Emitted when maximum gas per claim is updated
+    /// @param oldGasLimit Previous maximum gas per claim
+    /// @param newGasLimit New maximum gas per claim
+    event MaxGasPerClaimUpdated(uint256 indexed oldGasLimit, uint256 indexed newGasLimit);
 }
 
 /**
@@ -206,6 +252,7 @@ interface IVaultClaim {
     /// @notice Pay rewards with EIP-712 signature
     /// @param account Account to pay
     /// @param cumulativeAmount Total cumulative amount due
+    /// @param nonce Nonce for replay protection
     /// @param signature Publisher's EIP-712 signature
     /// @return gross Total amount claimed this transaction
     /// @return fee Platform fee deducted
@@ -213,6 +260,7 @@ interface IVaultClaim {
     function payWithSig(
         address account,
         uint256 cumulativeAmount,
+        uint256 nonce,
         bytes calldata signature
     ) external returns (uint256 gross, uint256 fee, uint256 net);
 
