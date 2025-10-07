@@ -21,7 +21,7 @@ contract ClaimRouter is ReentrancyGuard {
     /// @notice Maximum number of claims that can be processed in a single batch
     uint256 public maxBatchSize = 20; // Configurable batch limit (start conservative)
     /// @notice Maximum gas allowed per individual claim to prevent griefing
-    uint256 public maxGasPerClaim = 200000; // 200k gas limit per claim
+    uint256 public maxGasPerClaim = 200_000; // 200k gas limit per claim
     /// @notice Registry of trusted factory addresses
     mapping(address => bool) public approvedFactories; // Registry of trusted factories
 
@@ -82,7 +82,7 @@ contract ClaimRouter is ReentrancyGuard {
      * @param newMaxGasPerClaim New maximum gas per claim (50k to 500k range)
      */
     function setMaxGasPerClaim(uint256 newMaxGasPerClaim) external onlyTimelock {
-        if (newMaxGasPerClaim < 50000 || newMaxGasPerClaim > 500000) revert InvalidParameter("gas_limit");
+        if (newMaxGasPerClaim < 50_000 || newMaxGasPerClaim > 500_000) revert InvalidParameter("gas_limit");
         uint256 oldGasLimit = maxGasPerClaim;
         maxGasPerClaim = newMaxGasPerClaim;
         emit MaxGasPerClaimUpdated(oldGasLimit, newMaxGasPerClaim);

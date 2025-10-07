@@ -48,7 +48,7 @@ contract RewardPoolImplementation is
     /// @notice Grace period before emergency sweep can be executed
     uint256 public constant EMERGENCY_SWEEP_GRACE_PERIOD = 180 days;
     /// @notice Maximum gas allowed per emergency sweep operation
-    uint256 public constant EMERGENCY_SWEEP_GAS_LIMIT = 500000; // 500k gas limit
+    uint256 public constant EMERGENCY_SWEEP_GAS_LIMIT = 500_000; // 500k gas limit
     /// @notice Maximum claims per block to prevent spam attacks
     uint256 public constant MAX_CLAIMS_PER_BLOCK = 50; // Circuit breaker
     /// @notice Threshold for high-value claim monitoring (in token decimals)
