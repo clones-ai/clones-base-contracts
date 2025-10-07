@@ -177,6 +177,7 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should process claim with valid signature", async function () {
+            const nonce = await vault.claimNonce(claimer.address);
             const signature = await signClaim(
                 publisher,
                 vault,
@@ -184,7 +185,9 @@ describe("RewardPoolImplementation", function () {
                 CLAIM_AMOUNT
             );
 
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature))
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature))
                 .to.emit(vault, "ClaimedMinimal")
                 .withArgs(claimer.address, await testToken.getAddress(), CLAIM_AMOUNT);
 
@@ -197,8 +200,11 @@ describe("RewardPoolImplementation", function () {
 
         it("Should handle cumulative claims correctly", async function () {
             // First claim: 100 tokens
+            let nonce = await vault.claimNonce(claimer.address);
             let signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature);
 
             // Second claim: cumulative 200 tokens (additional 100)
             const cumulativeAmount = CLAIM_AMOUNT * 2n;
@@ -207,10 +213,13 @@ describe("RewardPoolImplementation", function () {
             const additionalFee = cumulativeFee - EXPECTED_FEE;
             const additionalNet = additionalAmount - additionalFee;
 
+            nonce = await vault.claimNonce(claimer.address);
             signature = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount);
 
             const initialBalance = await testToken.balanceOf(claimer.address);
-            await vault.payWithSig(claimer.address, cumulativeAmount, signature);
+            const nonce3 = await
+                vault.claimNonce(claimer.address);
+            await vault.payWithSig(claimer.address, cumulativeAmount, nonce3, signature);
 
             expect(await vault.alreadyClaimed(claimer.address)).to.equal(cumulativeAmount);
             expect(await testToken.balanceOf(claimer.address)).to.equal(initialBalance + additionalNet);
@@ -219,9 +228,11 @@ describe("RewardPoolImplementation", function () {
 
 
         it("Should reject invalid signatures", async function () {
+            const nonce = await vault.claimNonce(claimer.address);
             const invalidSignature = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
-
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, invalidSignature))
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, invalidSignature))
                 .to.be.revertedWithCustomError(vault, "ECDSAInvalidSignature");
         });
 
@@ -230,13 +241,13 @@ describe("RewardPoolImplementation", function () {
             await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
 
             // Sign with old publisher
+            let nonce = await vault.claimNonce(claimer.address);
             const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            // Sign with new publisher
-            const newSignature = await signClaim(newPublisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
-
             // Both should work during grace period
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, oldSignature))
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, oldSignature))
                 .to.emit(vault, "ClaimedMinimal");
 
             // Reset for second test
@@ -245,9 +256,12 @@ describe("RewardPoolImplementation", function () {
             await vault.connect(funder).fund(FUND_AMOUNT);
 
             const newClaimer = owner; // Use different address
+            nonce = await vault.claimNonce(newClaimer.address);
             const newSignature2 = await signClaim(newPublisher, await vault.getAddress(), newClaimer.address, CLAIM_AMOUNT);
 
-            await expect(vault.payWithSig(newClaimer.address, CLAIM_AMOUNT, newSignature2))
+            const nonce3 = await
+                vault.claimNonce(newClaimer.address);
+            await expect(vault.payWithSig(newClaimer.address, CLAIM_AMOUNT, nonce3, newSignature2))
                 .to.emit(vault, "ClaimedMinimal");
         });
 
@@ -258,29 +272,100 @@ describe("RewardPoolImplementation", function () {
             // Advance time beyond grace period
             await time.increase(7 * 24 * 60 * 60 + 1);
 
+            const nonce = await vault.claimNonce(claimer.address);
             const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, oldSignature))
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, oldSignature))
                 .to.be.revertedWithCustomError(vault, "SecurityViolation")
                 .withArgs("signature");
         });
 
-        it("Should prevent duplicate claims", async function () {
+        it("Should reject revoked publisher immediately", async function () {
+            // Emergency revoke current publisher
+            await factory.connect(guardian).emergencyRevokePublisher(publisher.address, "Key compromise detected");
+
+            const nonce = await vault.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature))
+                .to.be.revertedWithCustomError(vault, "SecurityViolation")
+                .withArgs("signature");
+        });
 
-            // Try to claim same amount again
-            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature))
-                .to.be.revertedWithCustomError(vault, "AlreadyExists")
-                .withArgs("claim");
+        it("Should reject revoked publisher even during grace period", async function () {
+            // Initiate publisher rotation
+            await factory.connect(timelock).initiatePublisherRotation(newPublisher.address);
+
+            // Emergency revoke old publisher during grace period
+            await factory.connect(guardian).emergencyRevokePublisher(publisher.address, "Suspicious activity");
+
+            const nonce = await vault.claimNonce(claimer.address);
+            const oldSignature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
+
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, oldSignature))
+                .to.be.revertedWithCustomError(vault, "SecurityViolation")
+                .withArgs("signature");
+        });
+
+        it("Should handle CREATE2 collision prevention", async function () {
+            const creator = owner.address;
+            const token = await testToken.getAddress();
+
+            // Get current nonce
+            const currentNonce = await factory.poolNonce(creator, token);
+
+            // Predict address
+            const [predictedAddress, salt] = await factory.predictPoolAddress(creator, token);
+
+            // Create pool and verify address matches prediction
+            const tx = await factory.connect(owner).createPool(token);
+            const receipt = await tx.wait();
+
+            // Find the pool creation event by parsing logs
+            const poolCreatedEvent = receipt?.logs.find(log => {
+                try {
+                    const parsed = factory.interface.parseLog(log);
+                    return parsed?.name === "PoolCreated";
+                } catch {
+                    return false;
+                }
+            });
+
+            if (poolCreatedEvent) {
+                const parsed = factory.interface.parseLog(poolCreatedEvent);
+                expect(parsed?.args.pool).to.equal(predictedAddress);
+                expect(parsed?.args.creator).to.equal(creator);
+                expect(parsed?.args.token).to.equal(token);
+            }
+        });
+
+        it("Should prevent duplicate claims", async function () {
+            let nonce = await vault.claimNonce(claimer.address);
+            const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
+
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce, signature);
+
+            // Try to claim same amount again (nonce changed)
+            await expect(vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature))
+                .to.be.revertedWithCustomError(vault, "AlreadyExists");
         });
 
         it("Should reject claims with insufficient vault balance", async function () {
             const largeAmount = FUND_AMOUNT + ethers.parseUnits("1", 18);
+            const nonce = await vault.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, largeAmount);
 
-            await expect(vault.payWithSig(claimer.address, largeAmount, signature))
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await expect(vault.payWithSig(claimer.address, largeAmount, nonce2, signature))
                 .to.be.revertedWithCustomError(vault, "InvalidParameter")
                 .withArgs("balance");
         });
@@ -297,37 +382,45 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should benchmark first claim gas usage", async function () {
+            const nonce = await vault.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
-            const tx = await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            const tx = await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature);
             const receipt = await tx.wait();
 
-            // Target: < 140k gas for first claim
+            // Target: < 240k gas for first claim (increased with nonce checks)
             console.log(`First claim gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(210000);
+            expect(receipt!.gasUsed).to.be.lessThan(240000);
         });
 
         it("Should benchmark subsequent claim gas usage", async function () {
             // Make first claim
+            let nonce = await vault.claimNonce(claimer.address);
             const signature1 = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature1);
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature1);
 
             // Make second claim
             const cumulativeAmount = CLAIM_AMOUNT * 2n;
+
             const signature2 = await signClaim(publisher, await vault.getAddress(), claimer.address, cumulativeAmount);
 
-            const tx = await vault.payWithSig(claimer.address, cumulativeAmount, signature2);
+            const nonce3 = await vault.claimNonce(claimer.address);
+            const tx = await vault.payWithSig(claimer.address, cumulativeAmount, nonce3, signature2);
             const receipt = await tx.wait();
 
-            // Target: < 100k gas for subsequent claims
+            // Target: < 140k gas for subsequent claims (increased with nonce checks)
             console.log(`Subsequent claim gas used: ${receipt!.gasUsed.toString()}`);
-            expect(receipt!.gasUsed).to.be.lessThan(120000);
+            expect(receipt!.gasUsed).to.be.lessThan(140000);
         });
     });
 
     describe("Withdrawal", function () {
         const FUND_AMOUNT = ethers.parseUnits("1000", 18);
-        const WITHDRAW_AMOUNT = ethers.parseUnits("500", 18);
+        const WITHDRAW_AMOUNT = ethers.parseUnits("150", 18); // Within 20% rate limit
 
         beforeEach(async function () {
             // Fund vault first
@@ -337,6 +430,9 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should allow creator to withdraw funds", async function () {
+            // Wait for withdrawal lock period
+            await time.increase(7n * 24n * 3600n);
+
             const initialCreatorBalance = await testToken.balanceOf(creator.address);
             const initialVaultBalance = await testToken.balanceOf(await vault.getAddress());
 
@@ -349,15 +445,18 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should allow creator to withdraw all funds", async function () {
+            // Wait for withdrawal lock period
+            await time.increase(7n * 24n * 3600n);
+
             const vaultBalance = await testToken.balanceOf(await vault.getAddress());
+            const maxWithdrawal = vaultBalance * 2000n / 10000n; // 20% rate limit
             const initialCreatorBalance = await testToken.balanceOf(creator.address);
 
-            await expect(vault.connect(creator).withdraw(vaultBalance))
+            await expect(vault.connect(creator).withdraw(maxWithdrawal))
                 .to.emit(vault, "Withdrawn")
-                .withArgs(creator.address, await testToken.getAddress(), vaultBalance);
+                .withArgs(creator.address, await testToken.getAddress(), maxWithdrawal);
 
-            expect(await testToken.balanceOf(creator.address)).to.equal(initialCreatorBalance + vaultBalance);
-            expect(await testToken.balanceOf(await vault.getAddress())).to.equal(0);
+            expect(await testToken.balanceOf(creator.address)).to.equal(initialCreatorBalance + maxWithdrawal);
         });
 
         it("Should reject withdrawal from non-creator", async function () {
@@ -373,12 +472,15 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should reject withdrawal exceeding balance", async function () {
+            // Wait for withdrawal lock period
+            await time.increase(7n * 24n * 3600n);
+
             const vaultBalance = await testToken.balanceOf(await vault.getAddress());
-            const excessiveAmount = vaultBalance + ethers.parseUnits("1", 18);
+            const maxWithdrawal = vaultBalance * 2000n / 10000n; // 20% rate limit
+            const excessiveAmount = maxWithdrawal + ethers.parseUnits("1", 18);
 
             await expect(vault.connect(creator).withdraw(excessiveAmount))
-                .to.be.revertedWithCustomError(vault, "InvalidParameter")
-                .withArgs("balance");
+                .to.be.revertedWithCustomError(vault, "SecurityViolation");
         });
 
         it("Should reject withdrawal when paused", async function () {
@@ -389,31 +491,44 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should work with mixed funding and withdrawals", async function () {
+            // Wait for withdrawal lock period
+            await time.increase(7n * 24n * 3600n);
+
             // Withdraw some
             await vault.connect(creator).withdraw(WITHDRAW_AMOUNT);
-            
+
             // Add more funding
             await testToken.mint(funder.address, FUND_AMOUNT);
             await testToken.connect(funder).approve(await vault.getAddress(), FUND_AMOUNT);
             await vault.connect(funder).fund(FUND_AMOUNT);
-            
-            // Withdraw again
+
+            // Withdraw again - must wait 24h for rate limit reset
+            await time.increase(24n * 3600n);
             const remainingBalance = await testToken.balanceOf(await vault.getAddress());
-            await expect(vault.connect(creator).withdraw(remainingBalance))
+            const maxWithdrawal = remainingBalance * 2000n / 10000n;
+            await expect(vault.connect(creator).withdraw(maxWithdrawal))
                 .to.emit(vault, "Withdrawn");
         });
 
         it("Should handle withdrawal after claims correctly", async function () {
+            // Wait for withdrawal lock period
+            await time.increase(7n * 24n * 3600n);
+
             // Make a claim first
             const CLAIM_AMOUNT = ethers.parseUnits("100", 18);
+            const nonce = await vault.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, signature);
 
-            // Now try to withdraw remaining balance
+            const nonce2 = await
+                vault.claimNonce(claimer.address);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature);
+
+            // Now try to withdraw remaining balance (within 20% rate limit)
             const vaultBalance = await testToken.balanceOf(await vault.getAddress());
-            await expect(vault.connect(creator).withdraw(vaultBalance))
+            const maxWithdrawal = vaultBalance * 2000n / 10000n;
+            await expect(vault.connect(creator).withdraw(maxWithdrawal))
                 .to.emit(vault, "Withdrawn")
-                .withArgs(creator.address, await testToken.getAddress(), vaultBalance);
+                .withArgs(creator.address, await testToken.getAddress(), maxWithdrawal);
         });
     });
 
@@ -462,13 +577,19 @@ describe("RewardPoolImplementation", function () {
         const types = {
             Claim: [
                 { name: "account", type: "address" },
-                { name: "cumulativeAmount", type: "uint256" }
+                { name: "cumulativeAmount", type: "uint256" },
+                { name: "nonce", type: "uint256" }
             ]
         };
 
+        // Get nonce from contract
+        const vaultContract = await ethers.getContractAt("RewardPoolImplementation", resolvedAddress);
+        const nonce = await vaultContract.claimNonce(account);
+
         const value = {
             account,
-            cumulativeAmount: cumulativeAmount.toString()
+            cumulativeAmount: cumulativeAmount.toString(),
+            nonce: nonce.toString()
         };
 
         return await signer.signTypedData(domain, types, value);

@@ -62,6 +62,7 @@ describe("ClaimRouter", function () {
 
         // Setup: Approve factory in router and tokens in factory
         await claimRouter.connect(timelock).setFactoryApproved(await factory.getAddress(), true);
+        await claimRouter.connect(timelock).setMaxGasPerClaim(300000); // Increase for nonce checks
         await factory.connect(timelock).setTokenAllowed(await testToken.getAddress(), true);
         await factory.connect(timelock).setTokenAllowed(await testToken2.getAddress(), true);
 
@@ -79,8 +80,8 @@ describe("ClaimRouter", function () {
         await testToken.mint(funder.address, FUND_AMOUNT * 2n);
         await testToken2.mint(funder.address, FUND_AMOUNT * 2n);
 
-        await testToken.connect(funder).approve(await await vault1.getAddress(), FUND_AMOUNT);
-        await testToken2.connect(funder).approve(await await vault2.getAddress(), FUND_AMOUNT);
+        await testToken.connect(funder).approve(await vault1.getAddress(), FUND_AMOUNT);
+        await testToken2.connect(funder).approve(await vault2.getAddress(), FUND_AMOUNT);
 
         await vault1.connect(funder).fund(FUND_AMOUNT);
         await vault2.connect(funder).fund(FUND_AMOUNT);
@@ -148,12 +149,14 @@ describe("ClaimRouter", function () {
 
     describe("Batch Claims", function () {
         it("Should process single claim successfully", async function () {
+            const nonce = await vault1.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [{
-                vault: await await vault1.getAddress(),
+                vault: await vault1.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
+                nonce: nonce,
                 signature
             }];
 
@@ -166,20 +169,24 @@ describe("ClaimRouter", function () {
         });
 
         it("Should process multiple claims in batch", async function () {
+            const nonce1 = await vault1.claimNonce(claimer.address);
+            const nonce2 = await vault2.claimNonce(claimer.address);
             const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
             const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [
                 {
-                    vault: await await vault1.getAddress(),
+                    vault: await vault1.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
+                    nonce: nonce1,
                     signature: signature1
                 },
                 {
-                    vault: await await vault2.getAddress(),
+                    vault: await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
+                    nonce: nonce2,
                     signature: signature2
                 }
             ];
@@ -193,20 +200,24 @@ describe("ClaimRouter", function () {
         });
 
         it("Should handle mixed success/failure gracefully", async function () {
+            const nonce1 = await vault1.claimNonce(claimer.address);
+            const nonce2 = await vault2.claimNonce(claimer.address);
             const validSignature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
             const invalidSignature = "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
             const claimData = [
                 {
-                    vault: await await vault1.getAddress(),
+                    vault: await vault1.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
+                    nonce: nonce1,
                     signature: validSignature
                 },
                 {
-                    vault: await await vault2.getAddress(),
+                    vault: await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
+                    nonce: nonce2,
                     signature: invalidSignature
                 }
             ];
@@ -235,12 +246,14 @@ describe("ClaimRouter", function () {
             await newFactory.connect(creator).createPool(await testToken.getAddress());
             const rogueVault = await ethers.getContractAt("RewardPoolImplementation", rogueVaultAddress);
 
+            const nonce = await rogueVault.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await rogueVault.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [{
                 vault: await rogueVault.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
+                nonce: nonce,
                 signature
             }];
 
@@ -255,20 +268,24 @@ describe("ClaimRouter", function () {
             // Pause vault1
             await vault1.connect(guardian).pause();
 
+            const nonce1 = await vault1.claimNonce(claimer.address);
+            const nonce2 = await vault2.claimNonce(claimer.address);
             const signature1 = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
             const signature2 = await signClaim(publisher, await vault2.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const claimData = [
                 {
-                    vault: await await vault1.getAddress(),
+                    vault: await vault1.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
+                    nonce: nonce1,
                     signature: signature1
                 },
                 {
-                    vault: await await vault2.getAddress(),
+                    vault: await vault2.getAddress(),
                     account: claimer.address,
                     cumulativeAmount: CLAIM_AMOUNT,
+                    nonce: nonce2,
                     signature: signature2
                 }
             ];
@@ -290,9 +307,10 @@ describe("ClaimRouter", function () {
         it("Should reject oversized batches", async function () {
             // Create batch larger than maxBatchSize (20)
             const largeBatch = Array(21).fill({
-                vault: await await vault1.getAddress(),
+                vault: await vault1.getAddress(),
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
+                nonce: 0,
                 signature: "0x00"
             });
 
@@ -302,6 +320,7 @@ describe("ClaimRouter", function () {
         });
 
         it("Should handle invalid vault addresses", async function () {
+            const nonce = await vault1.claimNonce(claimer.address);
             const signature = await signClaim(publisher, await vault1.getAddress(), claimer.address, CLAIM_AMOUNT);
 
             const invalidVault = "0x1234567890123456789012345678901234567890"; // Invalid vault but not zero
@@ -309,6 +328,7 @@ describe("ClaimRouter", function () {
                 vault: invalidVault,
                 account: claimer.address,
                 cumulativeAmount: CLAIM_AMOUNT,
+                nonce: nonce,
                 signature
             }];
 
@@ -320,22 +340,32 @@ describe("ClaimRouter", function () {
 
     describe("Gas Benchmarks", function () {
         it("Should benchmark batch claim gas usage", async function () {
-            // Create batch of 5 claims
+            // Create batch of 5 claims (alternating between vault1 and vault2 with increasing cumulative amounts)
             const batchSize = 5;
             const claimData = [];
+            let vault1ClaimCount = 0;
+            let vault2ClaimCount = 0;
+            let vault1Nonce = await vault1.claimNonce(claimer.address);
+            let vault2Nonce = await vault2.claimNonce(claimer.address);
 
             for (let i = 0; i < batchSize; i++) {
+                const vaultAddress = i % 2 === 0 ? await vault1.getAddress() : await vault2.getAddress();
+                const claimCount = i % 2 === 0 ? ++vault1ClaimCount : ++vault2ClaimCount;
+                const cumulativeAmount = CLAIM_AMOUNT * BigInt(claimCount);
+                const nonce = i % 2 === 0 ? vault1Nonce++ : vault2Nonce++;
                 const signature = await signClaim(
                     publisher,
-                    i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(),
+                    vaultAddress,
                     claimer.address,
-                    CLAIM_AMOUNT
+                    cumulativeAmount,
+                    nonce
                 );
 
                 claimData.push({
-                    vault: i % 2 === 0 ? await await vault1.getAddress() : await await vault2.getAddress(),
+                    vault: vaultAddress,
                     account: claimer.address,
-                    cumulativeAmount: CLAIM_AMOUNT,
+                    cumulativeAmount: cumulativeAmount,
+                    nonce: nonce,
                     signature
                 });
             }
@@ -343,10 +373,10 @@ describe("ClaimRouter", function () {
             const tx = await claimRouter.connect(relayer).claimAll(claimData);
             const receipt = await tx.wait();
 
-            // Target: < 110k gas per claim average
+            // Target: < 120k gas per claim average (increased with nonce checks)
             const gasPerClaim = Number(receipt!.gasUsed) / batchSize;
             console.log(`Batch claim gas per item: ${gasPerClaim.toFixed(0)}`);
-            expect(gasPerClaim).to.be.lessThan(110000);
+            expect(gasPerClaim).to.be.lessThan(120000);
         });
     });
 
@@ -355,7 +385,8 @@ describe("ClaimRouter", function () {
         signer: SignerWithAddress,
         vaultAddress: string,
         account: string,
-        cumulativeAmount: bigint
+        cumulativeAmount: bigint,
+        explicitNonce?: bigint
     ): Promise<string> {
         const chainId = await ethers.provider.getNetwork().then(n => n.chainId);
 
@@ -369,13 +400,24 @@ describe("ClaimRouter", function () {
         const types = {
             Claim: [
                 { name: "account", type: "address" },
-                { name: "cumulativeAmount", type: "uint256" }
+                { name: "cumulativeAmount", type: "uint256" },
+                { name: "nonce", type: "uint256" }
             ]
         };
 
+        // Get nonce from contract or use explicit nonce
+        let nonce: bigint;
+        if (explicitNonce !== undefined) {
+            nonce = explicitNonce;
+        } else {
+            const vaultContract = await ethers.getContractAt("RewardPoolImplementation", vaultAddress);
+            nonce = await vaultContract.claimNonce(account);
+        }
+
         const value = {
             account,
-            cumulativeAmount: cumulativeAmount.toString()
+            cumulativeAmount: cumulativeAmount.toString(),
+            nonce: nonce.toString()
         };
 
         return await signer.signTypedData(domain, types, value);

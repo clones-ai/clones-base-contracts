@@ -1,0 +1,35 @@
+# Simplified Echidna Configuration for Clones Reward Pool Fuzzing
+
+# Test configuration
+testMode: property       # Test invariant properties
+testLimit: 1000         # Number of transactions to generate (reduced for testing)
+shrinkLimit: 500        # Number of tries to shrink failing test cases
+seqLen: 50              # Number of transactions per sequence
+
+# Coverage and corpus
+coverage: true          # Enable coverage-guided fuzzing
+corpusDir: "corpus"     # Directory to store interesting inputs
+
+# Gas configuration
+gasLimit: 0xffffff      # Gas limit per transaction
+
+# Sender configuration
+sender: ["0x00a329c0648769a73afac7f9381e08fb43dbea72"]
+
+# Solidity configuration
+solcArgs: "--optimize --optimize-runs 600"
+cryticArgs: ["--compile-force-framework", "hardhat"]
+
+# Property testing
+checkAsserts: true      # Check assert() statements
+
+# Timeout configuration
+timeout: 300           # 5 minute timeout for testing
+stopOnFail: false      # Continue testing after finding failures
+
+# Output configuration
+format: "text"         # Output format
+quiet: false           # Verbose output
+
+# Seed for reproducibility
+seed: 42
