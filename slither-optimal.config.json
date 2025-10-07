@@ -1,6 +1,6 @@
 {
     "detectors_to_exclude": "assembly,pragma,solc-version",
-    "filter_paths": "node_modules",
+    "filter_paths": "node_modules,test/mocks,contracts/echidna,contracts/mocks",
     "exclude_informational": false,
     "exclude_low": false,
     "exclude_medium": false,
