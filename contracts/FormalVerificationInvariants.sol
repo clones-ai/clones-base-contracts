@@ -56,7 +56,7 @@ contract FormalVerificationInvariants {
     ) public pure returns (bool valid) {
         uint256 totalFeeDue = (cumulativeAmount * FEE_BPS) / FEE_DENOMINATOR;
         uint256 calculatedFeeForClaim = totalFeeDue - alreadyFeePaid;
-        
+
         // Fee calculation must match expected value
         return calculatedFeeForClaim == expectedFeeForClaim;
     }
@@ -72,23 +72,18 @@ contract FormalVerificationInvariants {
      * @return safeDiv Whether division is safe (b != 0)
      */
     function checkArithmeticSafety(
-        uint256 a, 
+        uint256 a,
         uint256 b
-    ) public pure returns (
-        bool safeAdd, 
-        bool safeSub, 
-        bool safeMul, 
-        bool safeDiv
-    ) {
+    ) public pure returns (bool safeAdd, bool safeSub, bool safeMul, bool safeDiv) {
         // Addition overflow check
         safeAdd = a <= type(uint256).max - b;
-        
+
         // Subtraction underflow check
         safeSub = a >= b;
-        
+
         // Multiplication overflow check
         safeMul = (a == 0 || b == 0) ? true : (a <= type(uint256).max / b);
-        
+
         // Division by zero check
         safeDiv = b != 0;
     }
@@ -114,9 +109,7 @@ contract FormalVerificationInvariants {
      * @param claimsInBlock Current claims in the block
      * @return valid Whether rate limiting is enforced
      */
-    function checkRateLimitingIntegrity(
-        uint256 claimsInBlock
-    ) public pure returns (bool valid) {
+    function checkRateLimitingIntegrity(uint256 claimsInBlock) public pure returns (bool valid) {
         // Claims per block must not exceed the maximum
         return claimsInBlock <= 50; // MAX_CLAIMS_PER_BLOCK constant
     }
@@ -127,9 +120,7 @@ contract FormalVerificationInvariants {
      * @param grossAmount The gross amount being claimed
      * @return valid Whether amount meets minimum requirements
      */
-    function checkPrecisionAttackPrevention(
-        uint256 grossAmount
-    ) public pure returns (bool valid) {
+    function checkPrecisionAttackPrevention(uint256 grossAmount) public pure returns (bool valid) {
         // Gross amount must be at least MIN_CLAIM_AMOUNT
         return grossAmount >= MIN_CLAIM_AMOUNT;
     }
@@ -148,7 +139,7 @@ contract FormalVerificationInvariants {
         uint256 currentTimestamp
     ) public pure returns (bool canSweep) {
         if (emergencyNoticeTimestamp == 0) return false;
-        
+
         uint256 EMERGENCY_NOTICE_PERIOD = 7 days;
         return currentTimestamp >= emergencyNoticeTimestamp + EMERGENCY_NOTICE_PERIOD;
     }
@@ -168,16 +159,16 @@ contract FormalVerificationInvariants {
     ) public pure returns (bool allValid) {
         // Check claim monotonicity
         if (!checkClaimMonotonicity(currentClaimed, newCumulativeAmount)) return false;
-        
+
         // Check rate limiting for current block
         if (!checkRateLimitingIntegrity(claimsInBlock)) return false;
-        
+
         // Check precision attack prevention
         if (newCumulativeAmount > currentClaimed) {
             uint256 grossAmount = newCumulativeAmount - currentClaimed;
             if (!checkPrecisionAttackPrevention(grossAmount)) return false;
         }
-        
+
         return true;
     }
 }

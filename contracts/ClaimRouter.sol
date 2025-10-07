@@ -168,12 +168,7 @@ contract ClaimRouter is ReentrancyGuard {
         uint256 gasBefore = gasleft();
 
         try
-            IVaultClaim(claim.vault).payWithSig(
-                claim.account,
-                claim.cumulativeAmount,
-                claim.nonce,
-                claim.signature
-            )
+            IVaultClaim(claim.vault).payWithSig(claim.account, claim.cumulativeAmount, claim.nonce, claim.signature)
         returns (uint256 _gross, uint256 _fee, uint256 _net) {
             if ((gasBefore - gasleft()) > maxGasPerClaim) {
                 emit ClaimFailed(claim.vault, claim.account, "Excessive gas usage detected");

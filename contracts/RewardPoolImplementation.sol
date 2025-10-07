@@ -59,7 +59,8 @@ contract RewardPoolImplementation is
     uint256 private constant MIN_CLAIM_AMOUNT_BASE = 1e16; // 0.01 tokens for 18 decimals
 
     /// @notice EIP-712 type hash for Claim struct with nonce for replay protection
-    bytes32 private constant CLAIM_TYPEHASH = keccak256("Claim(address account,uint256 cumulativeAmount,uint256 nonce)");
+    bytes32 private constant CLAIM_TYPEHASH =
+        keccak256("Claim(address account,uint256 cumulativeAmount,uint256 nonce)");
 
     // ----------- State Variables ----------- //
     struct PoolConfig {
@@ -99,7 +100,7 @@ contract RewardPoolImplementation is
     uint256 public emergencyNoticeTimestamp; // On-chain notice timestamp
     /// @notice Mandatory notice period before emergency sweep can be executed
     uint256 public constant EMERGENCY_NOTICE_PERIOD = 7 days; // Mandatory notice period
-    
+
     // Rate limiting state
     /// @notice Claims count per block for rate limiting
     mapping(uint256 => uint256) public claimsPerBlock; // block number -> claim count
@@ -122,13 +123,13 @@ contract RewardPoolImplementation is
             revert SecurityViolation("rate_limit_exceeded");
         }
         claimsPerBlock[block.number] = currentCount + 1;
-        
+
         // Alert when approaching limit (80% threshold)
         if (currentCount + 1 >= (MAX_CLAIMS_PER_BLOCK * 80) / 100) {
             emit SuspiciousActivity(
-                msg.sender, 
-                "high_claim_frequency", 
-                "Approaching rate limit for this block", 
+                msg.sender,
+                "high_claim_frequency",
+                "Approaching rate limit for this block",
                 block.timestamp
             );
         }
@@ -270,7 +271,8 @@ contract RewardPoolImplementation is
         withdrawnInWindow += amount;
 
         // Alert for large withdrawals
-        if (amount >= balance / 10) { // 10% or more of balance
+        if (amount >= balance / 10) {
+            // 10% or more of balance
             emit LargeCreatorWithdrawal(creator, amount, balance, block.timestamp);
         }
 
@@ -363,15 +365,15 @@ contract RewardPoolImplementation is
         if (gross >= HIGH_VALUE_CLAIM_THRESHOLD) {
             emit HighValueClaim(account, gross, cumulativeAmount, block.timestamp);
         }
-        
+
         // Check for suspicious patterns - multiple large claims from same account
         if (alreadyClaimed[account] > 0 && gross >= HIGH_VALUE_CLAIM_THRESHOLD) {
             uint256 previousTotal = alreadyClaimed[account] - gross;
             if (previousTotal >= HIGH_VALUE_CLAIM_THRESHOLD) {
                 emit SuspiciousActivity(
-                    account, 
-                    "repeated_high_value", 
-                    "Multiple high-value claims from same account", 
+                    account,
+                    "repeated_high_value",
+                    "Multiple high-value claims from same account",
                     block.timestamp
                 );
             }
@@ -424,7 +426,7 @@ contract RewardPoolImplementation is
         uint256 balance = IERC20(poolConfig.token).balanceOf(address(this));
         if (balance == 0) revert InvalidParameter("balance");
 
-        // Standard transfer with SafeERC20 protection 
+        // Standard transfer with SafeERC20 protection
         IERC20(poolConfig.token).safeTransfer(to, balance);
 
         // Reset notice to prevent reuse
@@ -526,18 +528,18 @@ contract RewardPoolImplementation is
         IERC20 tokenContract = IERC20(poolConfig.token);
         uint256 currentBalance = tokenContract.balanceOf(address(this));
         if (currentBalance == 0 && globalAlreadyClaimed > 0) return false;
-        
+
         // INVARIANT 2: Claim Monotonicity - Claims can only increase
         uint256 currentClaimed = alreadyClaimed[account];
         if (newCumulativeAmount < currentClaimed) return false;
-        
+
         // INVARIANT 3: Fee Calculation Consistency
         if (newCumulativeAmount > currentClaimed) {
             uint256 grossAmount = newCumulativeAmount - currentClaimed;
             uint256 totalFeeDue = Math.mulDiv(newCumulativeAmount, FEE_BPS, FEE_DENOMINATOR);
             uint256 currentFeePaid = alreadyFeePaid[account];
             uint256 feeForThisClaim = totalFeeDue - currentFeePaid;
-            
+
             // Fee must not exceed gross amount
             if (feeForThisClaim > grossAmount) return false;
 
@@ -545,15 +547,15 @@ contract RewardPoolImplementation is
             uint256 minClaimAmount = _getMinClaimAmount();
             if (grossAmount > 0 && grossAmount < minClaimAmount) return false;
         }
-        
+
         // INVARIANT 4: Rate Limiting Integrity
         uint256 claimsInBlock = claimsPerBlock[block.number];
         if (claimsInBlock > MAX_CLAIMS_PER_BLOCK) return false;
-        
+
         // INVARIANT 5: Arithmetic Safety - mulDiv handles overflow automatically
         // OpenZeppelin Math.mulDiv() ensures safe multiplication and division
         // No explicit check needed as Math.mulDiv reverts on overflow
-        
+
         return true;
     }
 
@@ -590,7 +592,7 @@ contract RewardPoolImplementation is
     /// @param to Address that received the swept funds
     /// @param amount Amount of tokens swept
     event EmergencySweep(address indexed to, uint256 indexed amount);
-    
+
     // ----------- Security Monitoring Events ----------- //
     /// @notice Emitted for high-value claims that require monitoring
     /// @param account Address that made the high-value claim
@@ -614,7 +616,12 @@ contract RewardPoolImplementation is
     /// @param amount Amount withdrawn
     /// @param balanceBefore Balance before withdrawal
     /// @param timestamp Block timestamp
-    event LargeCreatorWithdrawal(address indexed creator, uint256 indexed amount, uint256 balanceBefore, uint256 timestamp);
+    event LargeCreatorWithdrawal(
+        address indexed creator,
+        uint256 indexed amount,
+        uint256 balanceBefore,
+        uint256 timestamp
+    );
 }
 
 /**
