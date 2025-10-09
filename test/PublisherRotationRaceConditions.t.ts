@@ -194,13 +194,11 @@ describe("Publisher Rotation Race Conditions", function () {
       const signature2 = await signClaim(publisher2, await vault.getAddress(), claimer2.address, CLAIM_AMOUNT);
 
       // Both should work during grace period
-      const nonce = await
-        vault.claimNonce(claimer1.address);
+      const nonce = await vault.claimNonce(claimer1.address);
       await expect(vault.connect(claimer1).payWithSig(claimer1.address, CLAIM_AMOUNT, nonce, signature1))
         .to.emit(vault, "ClaimedMinimal");
 
-      const nonce2 = await
-        vault.claimNonce(claimer2.address);
+      const nonce2 = await vault.claimNonce(claimer2.address);
       await expect(vault.connect(claimer2).payWithSig(claimer2.address, CLAIM_AMOUNT, nonce2, signature2))
         .to.emit(vault, "ClaimedMinimal");
     });
