@@ -312,28 +312,17 @@ contract RewardPoolImplementation is
             if (IERC20(poolConfig.token).balanceOf(address(this)) < gross) revert InvalidParameter("balance");
 
             // Effects before interactions
+            // Save previous total for monitoring checks before state update
+            uint256 previousClaimed = alreadyClaimed[account];
             alreadyClaimed[account] = cumulativeAmount;
             alreadyFeePaid[account] = cumulativeFeeDue; // Track cumulative fees paid
-        }
 
-        globalAlreadyClaimed += gross;
-        poolConfig.lastClaimTimestamp = block.timestamp;
-        ++claimNonce[account]; // Increment nonce to prevent replay
-
-        // Interactions: transfer to account FIRST, then treasury for atomicity
-        // If account transfer fails, treasury doesn't get fee (prevents inconsistent state)
-        IERC20(poolConfig.token).safeTransfer(account, net);
-        if (fee > 0) IERC20(poolConfig.token).safeTransfer(poolConfig.platformTreasury, fee);
-
-        // Security monitoring and alerting
-        if (gross >= HIGH_VALUE_CLAIM_THRESHOLD) {
-            emit HighValueClaim(account, gross, cumulativeAmount, block.timestamp);
-        }
-
-        // Check for suspicious patterns - multiple large claims from same account
-        if (alreadyClaimed[account] > 0 && gross >= HIGH_VALUE_CLAIM_THRESHOLD) {
-            uint256 previousTotal = alreadyClaimed[account] - gross;
-            if (previousTotal >= HIGH_VALUE_CLAIM_THRESHOLD) {
+            // Check for suspicious patterns - multiple large claims from same account
+            if (
+                previousClaimed > 0 &&
+                previousClaimed >= HIGH_VALUE_CLAIM_THRESHOLD &&
+                gross >= HIGH_VALUE_CLAIM_THRESHOLD
+            ) {
                 emit SuspiciousActivity(
                     account,
                     "repeated_high_value",
@@ -341,6 +330,21 @@ contract RewardPoolImplementation is
                     block.timestamp
                 );
             }
+        }
+
+        globalAlreadyClaimed += gross;
+        poolConfig.lastClaimTimestamp = block.timestamp;
+        ++claimNonce[account]; // Increment nonce to prevent replay
+
+        // Interactions: transfer to trusted treasury FIRST, then untrusted account (defense in depth)
+        // Minimizes attack surface by interacting with protocol-controlled address before arbitrary account
+        // Note: Both transfers must succeed or entire transaction reverts (atomicity via safeTransfer)
+        if (fee > 0) IERC20(poolConfig.token).safeTransfer(poolConfig.platformTreasury, fee);
+        IERC20(poolConfig.token).safeTransfer(account, net);
+
+        // Security monitoring and alerting
+        if (gross >= HIGH_VALUE_CLAIM_THRESHOLD) {
+            emit HighValueClaim(account, gross, cumulativeAmount, block.timestamp);
         }
 
         // Single event for The Graph efficiency
