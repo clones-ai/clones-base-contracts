@@ -202,9 +202,7 @@ describe("RewardPoolImplementation", function () {
             // First claim: 100 tokens
             let nonce = await vault.claimNonce(claimer.address);
             let signature = await signClaim(publisher, await vault.getAddress(), claimer.address, CLAIM_AMOUNT);
-            const nonce2 = await
-                vault.claimNonce(claimer.address);
-            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce2, signature);
+            await vault.payWithSig(claimer.address, CLAIM_AMOUNT, nonce, signature);
 
             // Second claim: cumulative 200 tokens (additional 100)
             const cumulativeAmount = CLAIM_AMOUNT * 2n;
@@ -420,7 +418,7 @@ describe("RewardPoolImplementation", function () {
 
     describe("Withdrawal", function () {
         const FUND_AMOUNT = ethers.parseUnits("1000", 18);
-        const WITHDRAW_AMOUNT = ethers.parseUnits("150", 18); // Within 20% rate limit
+        const WITHDRAW_AMOUNT = ethers.parseUnits("150", 18);
 
         beforeEach(async function () {
             // Fund vault first
@@ -449,7 +447,7 @@ describe("RewardPoolImplementation", function () {
             await time.increase(7n * 24n * 3600n);
 
             const vaultBalance = await testToken.balanceOf(await vault.getAddress());
-            const maxWithdrawal = vaultBalance * 2000n / 10000n; // 20% rate limit
+            const maxWithdrawal = vaultBalance * 2000n / 10000n;
             const initialCreatorBalance = await testToken.balanceOf(creator.address);
 
             await expect(vault.connect(creator).withdraw(maxWithdrawal))
@@ -499,7 +497,7 @@ describe("RewardPoolImplementation", function () {
             await testToken.connect(funder).approve(await vault.getAddress(), FUND_AMOUNT);
             await vault.connect(funder).fund(FUND_AMOUNT);
 
-            // Withdraw again - must wait 24h for rate limit reset
+            // Withdraw again
             await time.increase(24n * 3600n);
             const remainingBalance = await testToken.balanceOf(await vault.getAddress());
             const maxWithdrawal = remainingBalance * 2000n / 10000n;
