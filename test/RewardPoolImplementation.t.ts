@@ -472,15 +472,12 @@ describe("RewardPoolImplementation", function () {
         });
 
         it("Should reject withdrawal exceeding balance", async function () {
-            // Wait for withdrawal lock period
-            await time.increase(7n * 24n * 3600n);
-
             const vaultBalance = await testToken.balanceOf(await vault.getAddress());
-            const maxWithdrawal = vaultBalance * 2000n / 10000n; // 20% rate limit
-            const excessiveAmount = maxWithdrawal + ethers.parseUnits("1", 18);
+            const excessiveAmount = vaultBalance + ethers.parseUnits("1", 18);
 
             await expect(vault.connect(creator).withdraw(excessiveAmount))
-                .to.be.revertedWithCustomError(vault, "SecurityViolation");
+                .to.be.revertedWithCustomError(vault, "InvalidParameter")
+                .withArgs("balance");
         });
 
         it("Should reject withdrawal when paused", async function () {

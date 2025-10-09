@@ -74,16 +74,8 @@ contract RewardPoolImplementation is
 
     /// @notice Address of the pool creator (who can withdraw funds)
     address public creator;
-    /// @notice Timestamp when pool was created (for withdrawal lock)
+    /// @notice Timestamp when pool was created (for tracking)
     uint256 public poolCreationTime;
-    /// @notice Minimum lock period before creator can withdraw (7 days)
-    uint256 public constant CREATOR_WITHDRAWAL_LOCK = 7 days;
-    /// @notice Maximum withdrawal percentage per 24h period (20%)
-    uint256 public constant MAX_WITHDRAWAL_PCT = 2000; // 20% in basis points
-    /// @notice Last withdrawal timestamp for rate limiting
-    uint256 public lastWithdrawalTime;
-    /// @notice Amount withdrawn in current 24h window
-    uint256 public withdrawnInWindow;
 
     // Cumulative claim tracking
     /// @notice Tracks cumulative amount already claimed per account
@@ -236,45 +228,17 @@ contract RewardPoolImplementation is
     }
 
     /**
-     * @notice Withdraw funds from the pool (creator only with rate limiting)
-     * @dev Implements rug pull prevention with 7-day lock and 20% daily withdrawal limit
+     * @notice Withdraw funds from the pool (creator only)
+     * @dev Creator can withdraw freely. Backend enforces checks to prevent withdrawing allocated rewards.
      * @param amount Amount to withdraw
      */
     function withdraw(uint256 amount) external nonReentrant whenNotPaused {
         if (msg.sender != creator) revert Unauthorized("creator");
         if (amount == 0) revert InvalidParameter("amount");
 
-        // SECURITY: Enforce minimum lock period after pool creation
-        if (block.timestamp < poolCreationTime + CREATOR_WITHDRAWAL_LOCK) {
-            revert SecurityViolation("withdrawal_locked");
-        }
-
         IERC20 tokenContract = IERC20(poolConfig.token);
         uint256 balance = tokenContract.balanceOf(address(this));
         if (balance < amount) revert InvalidParameter("balance");
-
-        // Reset window if 24 hours passed since last withdrawal
-        if (block.timestamp >= lastWithdrawalTime + 24 hours) {
-            withdrawnInWindow = 0;
-            lastWithdrawalTime = block.timestamp;
-        }
-
-        // Calculate maximum allowed withdrawal (20% of current balance per 24h)
-        uint256 maxWithdrawal = (balance * MAX_WITHDRAWAL_PCT) / FEE_DENOMINATOR;
-        uint256 availableWithdrawal = maxWithdrawal > withdrawnInWindow ? maxWithdrawal - withdrawnInWindow : 0;
-
-        if (amount > availableWithdrawal) {
-            revert SecurityViolation("withdrawal_limit_exceeded");
-        }
-
-        // Update withdrawal tracking
-        withdrawnInWindow += amount;
-
-        // Alert for large withdrawals
-        if (amount >= balance / 10) {
-            // 10% or more of balance
-            emit LargeCreatorWithdrawal(creator, amount, balance, block.timestamp);
-        }
 
         tokenContract.safeTransfer(creator, amount);
 
@@ -611,17 +575,6 @@ contract RewardPoolImplementation is
     /// @param currentCount Current count of claims in this block
     /// @param limit Maximum allowed claims per block
     event RateLimitHit(uint256 indexed blockNumber, uint256 currentCount, uint256 limit);
-    /// @notice Emitted when creator makes a large withdrawal (>10% of balance)
-    /// @param creator Address of the creator
-    /// @param amount Amount withdrawn
-    /// @param balanceBefore Balance before withdrawal
-    /// @param timestamp Block timestamp
-    event LargeCreatorWithdrawal(
-        address indexed creator,
-        uint256 indexed amount,
-        uint256 balanceBefore,
-        uint256 timestamp
-    );
 }
 
 /**
