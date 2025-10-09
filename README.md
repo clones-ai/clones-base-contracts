@@ -47,7 +47,7 @@ The `RewardPoolImplementation` serves as the master contract containing all pool
 - **Nonce-Based Replay Protection:** Per-account nonces prevent signature reuse
 - **Rate Limiting:** MAX_CLAIMS_PER_BLOCK = 50 with circuit breakers
 - **Fee Collection:** Transparent 10% platform fee on all reward claims
-- **Creator Controls:** 7-day timelock and 50% withdrawal limits for creator protection
+- **Creator Withdrawals:** Creators can withdraw freely - backend enforces allocation safety checks
 - **Security Monitoring:** High-value claim detection and suspicious activity alerts
 
 ### 3. ClaimRouter

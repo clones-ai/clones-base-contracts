@@ -28,13 +28,13 @@ async function main() {
     // Base Mainnet tokens
     const MAINNET_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
     const MAINNET_WETH = "0x4200000000000000000000000000000000000006";
-    const MAINNET_CLONES = "?";
+    const MAINNET_CLONES = "0xaadd98Ad4660008C917C6FE7286Bc54b2eEF894d";
 
-    // Deploy parameters - use deployer for all roles on testnet
-    const treasuryAddress = deployer.address;
-    const timelockAddress = deployer.address;
-    const guardianAddress = deployer.address;
-    const publisherAddress = deployer.address;
+    // Deploy parameters - read from environment or use deployer as fallback
+    const treasuryAddress = process.env.PLATFORM_TREASURY_ADDRESS || deployer.address;
+    const timelockAddress = process.env.TIMELOCK_ADDRESS || deployer.address;
+    const guardianAddress = process.env.GUARDIAN_ADDRESS || deployer.address;
+    const publisherAddress = process.env.PUBLISHER_ADDRESS || deployer.address;
 
     console.log("\n📋 Deployment Parameters:");
     console.log("Treasury:", treasuryAddress);

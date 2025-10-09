@@ -330,57 +330,40 @@ describe("RewardPool Security Features", function () {
     });
 
     describe("Creator Withdrawal Controls", function () {
-        it("Should enforce withdrawal lock period", async function () {
+        it("Should allow creator to withdraw freely (no lock period)", async function () {
             const amount = ethers.parseEther("1000");
 
+            // Creator can withdraw immediately after pool creation
             await expect(
                 rewardPool.connect(creator).withdraw(amount)
-            ).to.be.revertedWithCustomError(rewardPool, "SecurityViolation");
+            ).to.emit(rewardPool, "Withdrawn")
+                .withArgs(creator.address, await token.getAddress(), amount);
+        });
 
-            await time.increase(6n * 24n * 3600n);
-            await expect(
-                rewardPool.connect(creator).withdraw(amount)
-            ).to.be.revertedWithCustomError(rewardPool, "SecurityViolation");
+        it("Should allow multiple withdrawals without rate limiting", async function () {
+            const balance = await token.balanceOf(await rewardPool.getAddress());
+            const firstWithdrawal = balance * 3000n / 10000n; // 30%
+            const secondWithdrawal = balance * 2000n / 10000n; // 20%
 
-            await time.increase(24n * 3600n);
+            // First withdrawal
             await expect(
-                rewardPool.connect(creator).withdraw(amount)
+                rewardPool.connect(creator).withdraw(firstWithdrawal)
+            ).to.emit(rewardPool, "Withdrawn");
+
+            // Second withdrawal immediately after (no rate limit)
+            await expect(
+                rewardPool.connect(creator).withdraw(secondWithdrawal)
             ).to.emit(rewardPool, "Withdrawn");
         });
 
-        it("Should enforce rate limit on withdrawals", async function () {
+        it("Should emit Withdrawn event for all withdrawals", async function () {
             const balance = await token.balanceOf(await rewardPool.getAddress());
-            const maxWithdrawal = balance * 2000n / 10000n;
-
-            await time.increase(7n * 24n * 3600n);
+            const withdrawAmount = balance * 15n / 100n;
 
             await expect(
-                rewardPool.connect(creator).withdraw(maxWithdrawal)
-            ).to.emit(rewardPool, "Withdrawn");
-
-            await expect(
-                rewardPool.connect(creator).withdraw(1n)
-            ).to.be.revertedWithCustomError(rewardPool, "SecurityViolation");
-
-            await time.increase(24n * 3600n);
-
-            const newBalance = await token.balanceOf(await rewardPool.getAddress());
-            const newMax = newBalance * 2000n / 10000n;
-
-            await expect(
-                rewardPool.connect(creator).withdraw(newMax)
-            ).to.emit(rewardPool, "Withdrawn");
-        });
-
-        it("Should emit event for large withdrawals", async function () {
-            const balance = await token.balanceOf(await rewardPool.getAddress());
-            const largeAmount = balance * 15n / 100n;
-
-            await time.increase(7n * 24n * 3600n);
-
-            await expect(
-                rewardPool.connect(creator).withdraw(largeAmount)
-            ).to.emit(rewardPool, "LargeCreatorWithdrawal");
+                rewardPool.connect(creator).withdraw(withdrawAmount)
+            ).to.emit(rewardPool, "Withdrawn")
+                .withArgs(creator.address, await token.getAddress(), withdrawAmount);
         });
 
         it("Should restrict withdrawals to creator only", async function () {
