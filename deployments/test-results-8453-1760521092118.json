@@ -1,0 +1,23 @@
+{
+  "network": "base",
+  "chainId": 8453,
+  "timestamp": "2025-10-15T09:38:12.118Z",
+  "tester": "0x2567E93E16319bfDB3E958EeAE83B71D6F26F7e0",
+  "results": {
+    "factoryConfigured": true,
+    "tokensAllowed": {
+      "usdc": true,
+      "weth": true,
+      "clones": true
+    },
+    "claimRouterConfigured": true,
+    "poolCreation": false,
+    "systemOperational": true
+  },
+  "contracts": {
+    "factory": "0xda704A5bAC54FfE3A56D3B48a7EF6f3279557829",
+    "claimRouter": "0x3cF83B17163681d48B5fdd926eFcDA9940cB49fc",
+    "implementation": "0xf5FBB3bD5Ee86746351a857a8f5Ae414898F9816",
+    "testPool": "0x35A8a1ab5C187747FB2bBe7f43BD9DCE73834F6a"
+  }
+}

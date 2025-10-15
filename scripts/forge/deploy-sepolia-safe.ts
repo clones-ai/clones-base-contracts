@@ -120,87 +120,118 @@ async function main() {
         console.log("⏱️  Waiting 10 seconds for confirmations...");
         await new Promise(resolve => setTimeout(resolve, 10000));
 
-        // Step 4: Configuration
-        console.log("\n⚙️  Step 4: Configuring system...");
+        // Step 4: Generate Governance Configuration
+        console.log("\n⚙️  Step 4: Generating governance configuration...");
 
-        // Approve factory in ClaimRouter
-        console.log("Approving factory in ClaimRouter...");
-        nonce = await deployer.getNonce();
-        const approveTx = await claimRouter.setFactoryApproved(factoryAddress, true, {
-            nonce: nonce,
-            gasLimit: 100000,
-            gasPrice: ethers.parseUnits("1.5", "gwei")
-        });
-        await approveTx.wait();
-        console.log("✅ Factory approved in ClaimRouter");
-
-
-        // Wait for confirmations
-        console.log("⏱️  Waiting 5 seconds for confirmations...");
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        // Add tokens to allowlist
+        // Token addresses for the network
         const usdcAddress = chainId === 84532 ? SEPOLIA_USDC : MAINNET_USDC;
         const wethAddress = chainId === 84532 ? SEPOLIA_WETH : MAINNET_WETH;
         const clonesAddress = chainId === 84532 ? SEPOLIA_CLONES : MAINNET_CLONES;
 
-        console.log("Adding USDC to allowlist...");
-        nonce = await deployer.getNonce();
-        const usdcTx = await factory.setTokenAllowed(usdcAddress, true, {
-            nonce: nonce,
-            gasLimit: 100000,
-            gasPrice: ethers.parseUnits("1.5", "gwei")
-        });
-        await usdcTx.wait();
+        console.log("📋 Token addresses:");
+        console.log(`USDC: ${usdcAddress}`);
+        console.log(`WETH: ${wethAddress}`);
+        console.log(`CLONES: ${clonesAddress}`);
 
-        // Wait for confirmations
-        console.log("⏱️  Waiting 5 seconds for confirmations...");
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Generate Safe transaction data
+        const factoryInterface = new ethers.Interface([
+            "function setTokenAllowed(address token, bool allowed) external"
+        ]);
+        
+        const claimRouterInterface = new ethers.Interface([
+            "function setFactoryApproved(address factory, bool approved) external"
+        ]);
 
-        console.log("Adding WETH to allowlist...");
-        nonce = await deployer.getNonce();
-        const wethTx = await factory.setTokenAllowed(wethAddress, true, {
-            nonce: nonce,
-            gasLimit: 100000,
-            gasPrice: ethers.parseUnits("1.5", "gwei")
-        });
-        await wethTx.wait();
+        const safeBatch = {
+            version: "1.0",
+            chainId: chainId.toString(),
+            meta: {
+                name: "Clones Factory System Configuration",
+                description: "Configure token allowlist and ClaimRouter factory approval",
+                txBuilderVersion: "1.16.5"
+            },
+            transactions: [
+                {
+                    to: factoryAddress,
+                    value: "0",
+                    data: factoryInterface.encodeFunctionData("setTokenAllowed", [usdcAddress, true]),
+                    contractMethod: {
+                        inputs: [
+                            { name: "token", type: "address" },
+                            { name: "allowed", type: "bool" }
+                        ],
+                        name: "setTokenAllowed",
+                        payable: false
+                    },
+                    contractInputsValues: {
+                        token: usdcAddress,
+                        allowed: "true"
+                    }
+                },
+                {
+                    to: factoryAddress,
+                    value: "0",
+                    data: factoryInterface.encodeFunctionData("setTokenAllowed", [wethAddress, true]),
+                    contractMethod: {
+                        inputs: [
+                            { name: "token", type: "address" },
+                            { name: "allowed", type: "bool" }
+                        ],
+                        name: "setTokenAllowed",
+                        payable: false
+                    },
+                    contractInputsValues: {
+                        token: wethAddress,
+                        allowed: "true"
+                    }
+                },
+                {
+                    to: factoryAddress,
+                    value: "0",
+                    data: factoryInterface.encodeFunctionData("setTokenAllowed", [clonesAddress, true]),
+                    contractMethod: {
+                        inputs: [
+                            { name: "token", type: "address" },
+                            { name: "allowed", type: "bool" }
+                        ],
+                        name: "setTokenAllowed",
+                        payable: false
+                    },
+                    contractInputsValues: {
+                        token: clonesAddress,
+                        allowed: "true"
+                    }
+                },
+                {
+                    to: claimRouterAddress,
+                    value: "0",
+                    data: claimRouterInterface.encodeFunctionData("setFactoryApproved", [factoryAddress, true]),
+                    contractMethod: {
+                        inputs: [
+                            { name: "factory", type: "address" },
+                            { name: "approved", type: "bool" }
+                        ],
+                        name: "setFactoryApproved",
+                        payable: false
+                    },
+                    contractInputsValues: {
+                        factory: factoryAddress,
+                        approved: "true"
+                    }
+                }
+            ]
+        };
 
-        // Wait for confirmations
-        console.log("⏱️  Waiting 5 seconds for confirmations...");
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        console.log("Adding CLONES to allowlist...");
-        nonce = await deployer.getNonce();
-        const clonesTx = await factory.setTokenAllowed(clonesAddress, true, {
-            nonce: nonce,
-            gasLimit: 100000,
-            gasPrice: ethers.parseUnits("1.5", "gwei")
-        });
-        await clonesTx.wait();
-
-        // Verify tokens are allowed
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        const usdcAllowed = await factory.allowedTokens(usdcAddress);
-        const wethAllowed = await factory.allowedTokens(wethAddress);
-        const clonesAllowed = await factory.allowedTokens(clonesAddress);
-
-        console.log(`✅ USDC allowed: ${usdcAllowed}`);
-        console.log(`✅ WETH allowed: ${wethAllowed}`);
-        console.log(`✅ CLONES allowed: ${clonesAllowed}`);
-
-        // Step 5: Test Pool Creation
-        console.log("\n🏊 Step 5: Testing pool creation...");
-        nonce = await deployer.getNonce();
-        const createTx = await factory.createPool(usdcAddress, {
-            nonce: nonce,
-            gasLimit: 500000,
-            gasPrice: ethers.parseUnits("1.5", "gwei")
-        });
-        await createTx.wait();
-
-        const [poolAddress] = await factory.predictPoolAddress(deployer.address, usdcAddress);
-        console.log("✅ Test pool created:", poolAddress);
+        // Step 5: Wait for configuration instructions
+        console.log("\n⚠️  STEP 5: MANUAL GOVERNANCE CONFIGURATION REQUIRED");
+        console.log("═".repeat(80));
+        console.log("🏛️  The following configuration requires TIMELOCK (Safe multisig) execution:");
+        console.log("1. Token allowlist configuration (3 transactions)");
+        console.log("2. ClaimRouter factory approval (1 transaction)");
+        console.log("");
+        console.log("🔐 Safe Address:", timelockAddress);
+        console.log("📝 Import the generated batch file into Safe transaction builder");
+        console.log("═".repeat(80));
 
         // Summary
         console.log("\n📊 Deployment Summary");
@@ -212,7 +243,6 @@ async function main() {
         console.log(`USDC: ${usdcAddress}`);
         console.log(`WETH: ${wethAddress}`);
         console.log(`CLONES: ${clonesAddress}`);
-        console.log(`Test Pool: ${poolAddress}`);
         console.log("=".repeat(60));
 
         // Save deployment info
@@ -220,6 +250,7 @@ async function main() {
             network: network.name,
             chainId: chainId,
             timestamp: new Date().toISOString(),
+            status: "DEPLOYED_PENDING_GOVERNANCE",
             contracts: {
                 implementation: implementationAddress,
                 factory: factoryAddress,
@@ -228,9 +259,6 @@ async function main() {
                     usdc: usdcAddress,
                     weth: wethAddress,
                     clones: clonesAddress
-                },
-                testPools: {
-                    usdcPool: poolAddress
                 }
             },
             config: {
@@ -238,6 +266,17 @@ async function main() {
                 timelock: timelockAddress,
                 guardian: guardianAddress,
                 publisher: publisherAddress
+            },
+            governanceRequired: {
+                safeAddress: timelockAddress,
+                batchFile: `./deployments/safe-batch-${chainId}-config.json`,
+                instructions: [
+                    "1. Import safe-batch-config.json into Safe transaction builder",
+                    "2. Review and propose the 4 transactions",
+                    "3. Get required signatures from Safe owners", 
+                    "4. Execute the batch transaction",
+                    "5. Run test-system-functionality.ts to verify"
+                ]
             },
             verification: {
                 implementation: `npx hardhat verify --network ${network.name} ${implementationAddress}`,
@@ -247,15 +286,27 @@ async function main() {
         };
 
         const fs = require("fs");
-        const path = `./deployments/${network.name}-${chainId}-safe.json`;
-        fs.writeFileSync(path, JSON.stringify(deploymentInfo, null, 2));
-        console.log(`💾 Deployment info saved to ${path}`);
+        const deploymentPath = `./deployments/${network.name}-${chainId}-safe.json`;
+        const safeBatchPath = `./deployments/safe-batch-${chainId}-config.json`;
+        
+        fs.writeFileSync(deploymentPath, JSON.stringify(deploymentInfo, null, 2));
+        fs.writeFileSync(safeBatchPath, JSON.stringify(safeBatch, null, 2));
+        
+        console.log(`💾 Deployment info saved to ${deploymentPath}`);
+        console.log(`💾 Safe batch file saved to ${safeBatchPath}`);
 
-        console.log("\n🎉 Safe deployment completed successfully!");
-        console.log("\n📝 Verification Commands:");
-        console.log(deploymentInfo.verification.implementation);
-        console.log(deploymentInfo.verification.factory);
-        console.log(deploymentInfo.verification.claimRouter);
+        console.log("\n🎉 Deployment Phase 1 COMPLETED!");
+        console.log("\n📋 NEXT STEPS:");
+        console.log("1. 📝 Verify contracts on Basescan:");
+        console.log(`   ${deploymentInfo.verification.implementation}`);
+        console.log(`   ${deploymentInfo.verification.factory}`);
+        console.log(`   ${deploymentInfo.verification.claimRouter}`);
+        console.log("\n2. 🏛️  Execute governance configuration:");
+        console.log(`   - Safe Address: ${timelockAddress}`);
+        console.log(`   - Import file: ${safeBatchPath}`);
+        console.log(`   - Execute 4 transactions in Safe`);
+        console.log("\n3. ✅ Verify system functionality:");
+        console.log(`   npx hardhat run scripts/test-system-functionality.ts --network ${network.name}`);
 
     } catch (error) {
         console.error("❌ Deployment failed:", error);

@@ -39,6 +39,13 @@ contract RewardPoolImplementation is
     error Unauthorized(string role);
     error AlreadyExists(string resource);
     error SecurityViolation(string check);
+    
+    // Referral-specific errors
+    error ReferralLengthMismatch(uint256 referralsLength, uint256 amountsLength);
+    error TooManyReferrals(uint256 provided, uint256 maximum);
+    error ZeroAddressReferrer(uint256 index);
+    error ReferralAmountExceedsFee(uint256 totalReferrals, uint256 availableFee);
+    error InsufficientFeeForReferrals(uint256 required, uint256 available);
 
     // ----------- Constants ----------- //
     /// @notice Platform fee in basis points (10%)
@@ -262,6 +269,38 @@ contract RewardPoolImplementation is
         uint256 nonce,
         bytes calldata signature
     ) external nonReentrant whenNotPaused rateLimited returns (uint256 gross, uint256 fee, uint256 net) {
+        return _payWithSigInternal(account, cumulativeAmount, nonce, signature, new address[](0), new uint256[](0));
+    }
+
+    function payWithSigAndReferrals(
+        address account,
+        uint256 cumulativeAmount,
+        uint256 nonce,
+        bytes calldata signature,
+        address[] calldata referrals,
+        uint256[] calldata referralAmounts
+    ) external nonReentrant whenNotPaused rateLimited returns (uint256 gross, uint256 fee, uint256 net) {
+        if (referrals.length != referralAmounts.length) revert ReferralLengthMismatch(referrals.length, referralAmounts.length);
+        if (referrals.length > 2) revert TooManyReferrals(referrals.length, 2);
+        
+        // Validate referral amounts don't exceed reasonable limits
+        uint256 totalReferralAmount = 0;
+        for (uint256 i = 0; i < referralAmounts.length; i++) {
+            if (referralAmounts[i] > 0 && referrals[i] == address(0)) revert ZeroAddressReferrer(i);
+            totalReferralAmount += referralAmounts[i];
+        }
+        
+        return _payWithSigInternal(account, cumulativeAmount, nonce, signature, referrals, referralAmounts);
+    }
+
+    function _payWithSigInternal(
+        address account,
+        uint256 cumulativeAmount,
+        uint256 nonce,
+        bytes calldata signature,
+        address[] memory referrals,
+        uint256[] memory referralAmounts
+    ) internal returns (uint256 gross, uint256 fee, uint256 net) {
         if (cumulativeAmount <= alreadyClaimed[account]) revert AlreadyExists("claim");
 
         // Nonce validation for replay protection
@@ -298,6 +337,13 @@ contract RewardPoolImplementation is
             uint256 cumulativeFeeDue = Math.mulDiv(cumulativeAmount, FEE_BPS, FEE_DENOMINATOR);
             fee = cumulativeFeeDue - alreadyFeePaid[account]; // feeForThisClaim
             net = gross - fee;
+            
+            // CRITICAL: Validate referral amounts don't exceed platform fee
+            uint256 totalReferralFee = 0;
+            for (uint256 i = 0; i < referralAmounts.length; i++) {
+                totalReferralFee += referralAmounts[i];
+            }
+            if (totalReferralFee > fee) revert ReferralAmountExceedsFee(totalReferralFee, fee);
 
             // Additional precision check: ensure fee calculation is meaningful
             if (gross >= minClaimAmount && fee == 0 && FEE_BPS > 0) {
@@ -336,10 +382,27 @@ contract RewardPoolImplementation is
         poolConfig.lastClaimTimestamp = block.timestamp;
         ++claimNonce[account]; // Increment nonce to prevent replay
 
-        // Interactions: transfer to trusted treasury FIRST, then untrusted account (defense in depth)
-        // Minimizes attack surface by interacting with protocol-controlled address before arbitrary account
-        // Note: Both transfers must succeed or entire transaction reverts (atomicity via safeTransfer)
-        if (fee > 0) IERC20(poolConfig.token).safeTransfer(poolConfig.platformTreasury, fee);
+        // Interactions: Handle multi-recipient transfers
+        // 1. Transfer to referrers first (if any)
+        // 2. Transfer remaining fee to platform treasury  
+        // 3. Transfer net amount to farmer
+        
+        uint256 totalReferralSent = 0;
+        for (uint256 i = 0; i < referrals.length; i++) {
+            if (referralAmounts[i] > 0) {
+                IERC20(poolConfig.token).safeTransfer(referrals[i], referralAmounts[i]);
+                totalReferralSent += referralAmounts[i];
+                emit ReferralReward(referrals[i], referralAmounts[i], account);
+            }
+        }
+        
+        // Transfer remaining fee to platform treasury (fee - total referral rewards)
+        uint256 remainingFee = fee - totalReferralSent;
+        if (remainingFee > 0) {
+            IERC20(poolConfig.token).safeTransfer(poolConfig.platformTreasury, remainingFee);
+        }
+        
+        // Transfer net amount to farmer
         IERC20(poolConfig.token).safeTransfer(account, net);
 
         // Security monitoring and alerting
@@ -579,6 +642,11 @@ contract RewardPoolImplementation is
     /// @param currentCount Current count of claims in this block
     /// @param limit Maximum allowed claims per block
     event RateLimitHit(uint256 indexed blockNumber, uint256 currentCount, uint256 limit);
+    /// @notice Emitted when referral rewards are paid
+    /// @param referrer Address that received the referral reward
+    /// @param amount Amount of referral reward
+    /// @param farmer Address of the farmer who generated the reward
+    event ReferralReward(address indexed referrer, uint256 indexed amount, address indexed farmer);
 }
 
 /**
