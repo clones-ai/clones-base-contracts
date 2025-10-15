@@ -1,6 +1,6 @@
 {
     "name": "clones-base-contracts",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "private": true,
     "description": "CLONES project smart contracts for Base (L2)",
     "license": "MIT",
