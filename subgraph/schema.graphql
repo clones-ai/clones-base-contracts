@@ -1,0 +1,64 @@
+# Entities derived from on-chain events
+
+type Dataset @entity {
+  id: ID!
+  name: String!
+  ticker: String!
+  contractAddress: Bytes!
+  creator: Bytes!
+  datasetCID: String!
+  qualityCID: String!
+  burnThreshold: BigInt!
+  totalSupply: BigInt!
+  decimals: Int!
+  isGraduated: Boolean!
+  virtualEthReserve: BigInt!
+  virtualTokenReserve: BigInt!
+  graduationThresholdUSD: BigInt!
+  launchedAt: BigInt!
+  graduatedAt: BigInt
+
+  # Live stats
+  currentPrice: BigDecimal!
+  marketCap: BigDecimal!
+  fdv: BigDecimal!
+  volume24h: BigDecimal!
+  liquidity: BigDecimal!
+  holders: Int!
+  holdersChange: BigDecimal!
+  priceChange24h: BigDecimal!
+  bondingCurveProgress: BigDecimal!
+}
+
+type Trade @entity {
+  id: ID!
+  dataset: Dataset!
+  account: Bytes!
+  type: String!
+  ethAmount: BigDecimal!
+  tokenAmount: BigDecimal!
+  tx: Bytes!
+  timestamp: BigInt!
+}
+
+type Holder @entity {
+  id: ID! # datasetId-account
+  dataset: Dataset!
+  account: Bytes!
+  balance: BigDecimal!
+  percentage: BigDecimal!
+  lastUpdated: BigInt!
+}
+
+# Aggregated platform stats
+type MarketStat @entity {
+  id: ID! # singleton "global"
+  totalVolume: BigDecimal!
+  activeDatasets: Int!
+  totalUsers: Int!
+  averagePrice: BigDecimal!
+  totalTrades: BigInt!
+  burnRate: BigDecimal!
+  marketCap: BigDecimal!
+  updatedAt: BigInt!
+}

@@ -1,187 +1,204 @@
-# Clones Base Contracts
+# install dependencies
+npm install --save-dev hardhat typescript ts-node @types/node @nomicfoundation/hardhat-toolbox ethers
 
-Official smart contracts for the Clones protocol on the Base L2 network. This project implements a factory-based reward pool system using EIP-1167 minimal proxy pattern for efficient deployment of individual reward pools.
+# start local chain
+npx hardhat node
 
-Built with **Hardhat**, **Ethers.js v6**, and **OpenZeppelin Contracts v5**.
+# deploy contracts
+npm run deploy
+This prints deployed contract addresses. Copy the DatasetToken address
 
-[![Tests](https://img.shields.io/badge/tests-150%2F150%20passing-brightgreen)]()
-[![Coverage](https://img.shields.io/badge/coverage-83.82%25-green)]()
-[![Security](https://img.shields.io/badge/slither-0%20findings-brightgreen)]()
-[![Fuzzing](https://img.shields.io/badge/echidna-18%2F18%20invariants-brightgreen)]()
-[![Audit Ready](https://img.shields.io/badge/audit-ready-blue)]()
-
-
-## Project Architecture & Standards
-
-This repository implements a modern factory-based architecture for reward pool management. All contracts adhere to high-quality standards ensuring security, gas efficiency, and maintainability.
-
-### Core Principles
-- **Security First:** Defense-in-depth approach with reentrancy protection, access control, and L2-specific safety features
-- **Gas Optimization:** EIP-1167 minimal proxy pattern reduces deployment costs by 99%+ compared to full contract deployments
-- **Deterministic Addresses:** CREATE2 implementation allows prediction of pool addresses before deployment
-- **Batch Operations:** ClaimRouter enables efficient multi-vault reward claiming in a single transaction
-- **EIP-712 Signatures:** Secure, off-chain signed reward claims with replay protection
-
-
-## Core Contracts
-
-### 1. RewardPoolFactory
-
-The `RewardPoolFactory` is the core factory contract that creates deterministic reward pools using EIP-1167 minimal proxy pattern.
-
-**Key Features:**
-- **EIP-1167 Clones:** Deploys lightweight proxy contracts (CREATE2) pointing to a master implementation
-- **Deterministic Addresses:** Pool addresses are predictable using creator + token combination
-- **Token Allowlist:** Only approved tokens can be used for pool creation
-- **Publisher Management:** Role-based system for authorized reward publishers with rotation and grace periods
-- **Minimal Gas Cost:** ~50k gas per pool creation vs ~2M gas for full deployment
-- **Atomic Create+Fund:** Single transaction for pool creation and initial funding
-
-### 2. RewardPoolImplementation
-
-The `RewardPoolImplementation` serves as the master contract containing all pool logic that is shared by minimal proxies.
-
-**Key Features:**
-- **EIP-712 Signatures:** Secure reward claiming with typed data signatures
-- **Cumulative Rewards:** Prevents double-spending with cumulative reward tracking
-- **Nonce-Based Replay Protection:** Per-account nonces prevent signature reuse
-- **Rate Limiting:** MAX_CLAIMS_PER_BLOCK = 50 with circuit breakers
-- **Fee Collection:** Transparent 10% platform fee on all reward claims
-- **Creator Withdrawals:** Creators can withdraw freely - backend enforces allocation safety checks
-- **Security Monitoring:** High-value claim detection and suspicious activity alerts
-
-### 3. ClaimRouter
-
-The `ClaimRouter` enables efficient batch claiming across multiple reward pools in a single transaction.
-
-**Key Features:**
-- **Multi-Vault Batching:** Claim rewards from multiple pools atomically
-- **Gas Optimization:** Reduces transaction costs for users with multiple active pools
-- **Factory Verification:** Only processes claims from approved factory-created pools
-- **Batch Size Limits:** Configurable limits prevent gas exhaustion attacks
-- **Atomic Operations:** All claims succeed or fail together
-
-## Quick Start
-
-### Installation
-
-```bash
-npm install
-```
-
-### Environment Setup
-
-Create a `.env` file in the project root:
-
-```env
-PRIVATE_KEY=your_wallet_private_key
-BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
-BASE_RPC_URL=https://mainnet.base.org
-ETHERSCAN_API_KEY=your_basescan_api_key
-```
-
-**⚠️ Never commit your `.env` file**
-
-## Testing
-
-### Unit Tests (150 tests, 100% passing)
-
-```bash
-# Run all tests
+# run tests
 npm test
 
-# Run with coverage
-npm run coverage
+# start gateway
+export TOKEN_ADDRESS=<DatasetToken address>
+export RPC=http://127.0.0.1:8545
+npm run start:gateway
 
-# Run specific test file
-npx hardhat test test/RewardPoolImplementation.t.ts
+# End-to-End Lifecycle
+1. Creator uploads & certifies dataset (>50 % score)
+2. Gateway verifies signature → deploys ERC-20 + AMM
+3. Users trade along curve (no burns yet)
+4. At $69 k market cap → auto graduation → LP burned
+5. Burn Portal opens → users burn tokens → download dataset
+6. Royalties distributed per EIP-2981
 
-# Quick security check
-npx hardhat test test/SecurityQuickTest.t.ts
-```
+# Core concepts encoded on-chain
+Fixed Supply per dataset: 1,000,000,000 (6 decimals)
+Virtual reserves for curve shaping (avoid singularity): vEth, vTok set at launch
+Speculation Phase: buy/sell along curve, burns disabled
+Fees (forever): 0.25% creator, 0.75% protocol (taken from trade ETH)
+Graduation: when market cap ≥ $69,000 (via Chainlink oracle), triggers Uniswap V2 migration; LP burned to 0xdead
+Burn Portal: after graduation, holders may burnThreshold fraction (1–10% of supply) to unlock dataset IPFS download
+Provenance: IPFS CID + creator address + quality report hash are immutably recorded
 
-## Security Testing
+# Off-chain unlock flow (high level)
 
-### Static Analysis (Slither)
+User burns with BurnPortal.burnAndUnlock(token, amount ≥ threshold).
+Off-chain listener (Node/NestJS/FastAPI) watches BurnAccess events.
+Service verifies event → generates one-time, time-limited signed URL for datasetCID via gateway (or uses IPFS HTTP Gateway with HMAC).
+URL returned to the connected wallet session → instant download.
 
-```bash
-# Standard check
-npm run security
+# Core concepts on-chain
+DatasetRegistry stores: id, slug, token, creator, metadataCID, createdAt, updatedAt, providerId.
+DatasetFactory creates tokens & pools and registers them in Registry.
+BondingCurvePool exposes view functions for: virtual reserves, live reserves, k, price and flags (graduated).
+BurnPortal routes burns through Factory (only Factory can burn the token) and emits BurnAccess.
 
-# Production mode (more thorough)
-npm run security:production
+# DatasetToken
 
-# Strict mode (most thorough, recommended)
-npm run security:strict
-```
+What it is: An ERC-20 for a single dataset with:
+Fixed supply = 1,000,000,000 tokens (6 decimals).
+Immutable burnThreshold (1–10% of supply) = the cost to unlock the dataset once it’s graduated.
+Immutable datasetCID (IPFS CID) and qualityReportCID for provenance.
+A graduated flag (false while on curve, true after DEX migration).
 
-### Property-Based Fuzzing (Echidna)
+Special rule: burnFrom is callable only by the Factory (designated authority) and only after graduation. Holders themselves don’t burn directly; they request a burn via the portal which routes through the Factory. This prevents anyone from faking a burn off-flow and also centralizes post-checks (e.g., rate-limits, allowlists if ever needed).
 
-Echidna automatically generates thousands of random transactions to test invariants:
+Why factory-gated burning?
+So the protocol can enforce “no burns during speculation phase,” and so the burn pipeline can emit a canonical event the off-chain unlocker trusts.
 
-```bash
-# Test RewardPool core logic (claims, fees, nonces) - ~1 min
-npm run echidna:rewardpool
+# BondingCurvePool
 
-# Test Factory (publisher rotation, governance) - ~30 sec
-npm run echidna:factory
+What it is: A one-way buy pool implementing a virtual-reserves constant-product curve:
+Invariant on virtual reserves: k = (E + vE) × (T + vT)
+Price ≈ (E + vE) / (T + vT) (ETH per token)
+Fees on every buy: 0.25% to creator, 0.75% to protocol (forever).
+No sells during speculation. You can add a sell path later if desired.
+Anti-bot switch: tradingEnabled flag that the creator can pause before graduation (UI still enforces human checks with captcha/rate limit).
 
-# Quick test (token + basics) - ~20 sec
-npm run echidna:quick
 
-# Run all critical fuzzers
-npm run echidna:all
-```
+# DatasetFactory
 
-📖 See **[ECHIDNA_FUZZING_GUIDE.md](./ECHIDNA_FUZZING_GUIDE.md)** for complete fuzzing documentation.
+What it is: The protocol coordinator:
+Launches a dataset: deploys DatasetToken, deploys BondingCurvePool, holds the initial 0.02 ETH for future LP.
+Holds burn authority for the token (see above).
+Graduates a dataset when market cap target is hit:
+Creates UniswapV2 LP pair.
+Adds all raised ETH + 206.9M reserved tokens as liquidity.
+Sends LP to 0xdead (burned liquidity).
+Sets token to graduated = true and enables the Burn Portal.
+Emits rich events (DatasetLaunched, Graduated) that the subgraph indexes.
+Market cap gating: Factory compares price to the Chainlink ETH/USD feed and checks the target (~$69k) before calling graduate().
 
-### Code Coverage
 
-```bash
-npm run coverage
-```
+# BurnPortal
+What it is: The interactive gateway after graduation. Users connect a wallet and request an unlock:
+It does not burn tokens itself. Instead it calls the Factory, which calls token.burnFrom(user, amount) (enforcing “only Factory can burn”).
+Emits a BurnAccess(user, token, amount, datasetCID) event used by the off-chain unlock service to deliver the download.
 
-## Deployment
 
-### Deploy Factory System
+# Lifecycle: from launch → graduation → burn-to-download
 
-```bash
-# Deploy to Base Sepolia (testnet)
-npm run deploy-safe:baseSepolia
+## Launch (speculation-only)
+Creator uploads provenance to IPFS, picks burn threshold (e.g., 5%), and seeds the curve with 793.1M tokens in the BondingCurvePool.
+Factory holds 0.02 ETH to later seed DEX liquidity at graduation.
+No burns are possible yet.
+## Price discovery on the curve
+Buyers send ETH to BondingCurvePool.buy().
+Pool uses virtual reserves to compute tokens-out and updates (E, T).
+Fees stream to creator & protocol on every buy.
+## Graduation
+Once the on-chain price → implied market cap ≥ target (~$69k), Factory.graduate():
+Adds all raised ETH + 206.9M tokens to Uniswap V2.
+Sends LP to 0xdead (permanent liquidity; no rugs).
+Marks the curve pool as closed and the token as graduated = true.
+## Burn-to-download
+Holder requests an unlock in the Burn Portal.
+Burn Portal → Factory → token.burnFrom(holder, threshold).
+Factory emits BurnAccess(user, token, amount, datasetCID) event.
+Off-chain unlock service sees the event, verifies it, and returns a one-time download (details below).
 
-# Deploy to Base Mainnet
-npm run deploy-safe:base
+# How the dataset lives on IPFS and stays locked
 
-# Deploy + integration tests
-npm run deploy-and-test:baseSepolia
+IPFS itself is public content addressing, so the lock is done by encryption + key release. Here’s the recommended setup:
 
-# Validate system functionality
-npm run final-validation:baseSepolia
-```
+## Encrypt on IPFS
+Encrypt the dataset locally before pinning:
+Use AES-256-GCM with a random 256-bit key K and random nonce per chunk.
+(Optional) Chunk/split and generate a metafile manifest (list of CIDs).
+Upload the encrypted files to IPFS; record the CID (this is what goes into DatasetToken.datasetCID).
+Store the decryption key K in your unlock service (HSM/KMS preferred), never on-chain.
+### On successful burn:
+Off-chain listener verifies BurnAccess (wallet, token, amount ≥ threshold, token.graduated == true).
+Service generates a single-use, short-TTL response that includes:
+A pre-signed gateway URL (or direct IPFS fetch) to the encrypted asset(s).
+The decryption key K, delivered only to the requestor’s wallet session (e.g., via a signed backend response bound to the wallet address + nonce).
+Client downloads encrypted blobs and decrypts locally in the browser (WebCrypto) or streams/decrypts server-side for the user.
 
-## Available Commands
+Pros: Cryptographically locked until burn; even if someone finds the CID, it’s useless without K.
+Cons: Users can still redistribute after they decrypt—this is true for any downloadable dataset. You mitigate with watermarking/licensing.
 
-```bash
-# Build & Test
-npm run build                       # Compile contracts
-npm test                           # Run all 150 tests
-npm run coverage                   # Generate coverage report
+# What prevents pre-burn access?
 
-# Security & Analysis
-npm run security:strict            # Slither strict mode
-npm run echidna:all                # All critical fuzzers
-npm run echidna:rewardpool         # RewardPool fuzzer
-npm run echidna:factory            # Factory fuzzer
-npm run echidna:quick              # Quick fuzzing test
+The CID stored on-chain points to encrypted data (or to a gateway that won’t serve without a valid signature).
+The decryption key is never on-chain and only released after a verifiable burn event.
+The unlock service only honors burns emitted by your Factory (the single authorized burner), so spoofed transactions or direct token transfer() noise can’t trick it.
+If you use Lit Protocol / threshold networks, you can require an on-chain condition (e.g., “this wallet burned ≥ threshold”) to automatically release K via distributed key control; this removes your backend from the trust path, though it’s more complex to integrate.
 
-# Deployment
-npm run deploy-safe:baseSepolia    # Deploy to testnet
-npm run deploy-safe:base           # Deploy to mainnet
-npm run finish-setup:baseSepolia   # Post-deployment setup
+# The exact unlock flow (message-level)
 
-# Verification
-npm run verify:baseSepolia         # Verify contracts on Basescan
+User clicks “Burn & Download”
+Frontend asks wallet to sign a short-lived auth message (anti-CSRF).
+Backend verifies ownership of the wallet address and calls:
+Factory.burnForAccess(tokenAddress, msg.sender, burnThreshold) (or similar).
+Factory calls token.burnFrom(user, amount) (since only the Factory is allowed).
+Factory emits BurnAccess(user, token, amount, datasetCID, timestamp).
+Unlock service (subscribed to events) validates:
+token.graduated == true
+amount >= burnThreshold
+event.user matches the session wallet
+Unlock service responds with:
+Key K (if using encryption) or a signed, single-use, short-TTL URL (if not using encryption).
+Optionally a per-user watermark payload.
+Frontend downloads and (if encrypted) decrypts client-side via WebCrypto.
 
-# Linting
-npm run lint:sol                   # Lint Solidity files
-```
+# Bonding-curve & graduation math (quick intuition)
+
+With virtual reserves, you shape the early slope and avoid singularity at the first trade:
+price(ETH/token) = (E + vE) / (T + vT)
+Each buy moves you up the curve, increasing price; fees siphon off to creator/protocol.
+The subgraph tracks:
+currentPrice, volume24h, holders, k = (E+vE)(T+vT), bondingCurveProgress = marketCap / target.
+Graduation freezes the curve, migrates liquidity to UniswapV2, burns LP, and flips graduated = true.
+
+
+# Map required fields
+## On-chain & views:
+id, slug, tokenAddress, owner (creator), createdAt, updatedAt, provider.id → DatasetRegistry
+bondingCurve.currentPrice, totalSupply, virtualEthReserve, virtualTokenReserve, k, isGraduated → BondingCurvePool + DatasetToken (via Factory.getBondingCurve)
+graduationThreshold → supplied to the view or stored off-chain/subgraph
+## Off-chain/IPFS (metadataCID):
+name, description, category, size, format, metadata.tags/license/quality/samples/features/previewUrl/thumbnailUrl, provider.name/avatar
+## Off-chain/DB (Mongo via Mongoose):
+rating, reviewCount, plus any extra analytics like volume24h, marketCap (you can also compute these in the subgraph)
+
+
+# Test step on local
+1. npx hardhat node
+2. npx hardhat compile
+3. npx hardhat run --network localhost deploy/01_deploy_core.ts --show-stack-traces
+4. Update .env with the addresses you got from the above command
+   Note: Leave DEPLOYER_KEY empty for localhost; Hardhat uses unlocked accounts.
+5. npx hardhat run --network localhost deploy/02_create_dataset.ts
+6. npx hardhat run --network localhost deploy/02_seed_and_smoketest.ts
+7. npx hardhat run --network localhost deploy/03_list_datasets.ts
+
+# How to test on base sepolia
+## create test wallet on base sepolia
+node
+> const { Wallet } = require("ethers");
+> const w = Wallet.createRandom();
+> console.log(w.address);
+> console.log(w.privateKey);
+Take that private key, prefix 0x, and save to .env
+Note: Keep this key private, do not commit .env to GitHub
+## Add Base Sepolia test ETH
+You will need a small amount of ETH to pay gas
+1. Go to the Base Sepolia faucet (official or via Alchemy):
+   https://faucet.base.org or https://www.alchemy.com/faucets/base-sepolia
+2. Paste your wallet address and request funds.
+3. After a minute, check in your wallet:
+   Network = “Base Sepolia Testnet”
+   You should see a small ETH balance.

@@ -1,3 +1,0 @@
-contracts/echidna/**/*.sol
-contracts/mocks/**/*.sol
-contracts/FormalVerificationInvariants.sol

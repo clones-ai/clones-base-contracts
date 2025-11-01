@@ -1,0 +1,36 @@
+{
+  "id": "dataset-001",
+  "slug": "computer-vision-image-classification",
+  "name": "Computer Vision Image Classification",
+  "description": "A comprehensive dataset of 2.1M high-quality images across 1000 classes for image classification tasks. Perfect for training state-of-the-art computer vision models.",
+  "category": "Computer Vision",
+  "size": 2300000000,
+  "format": "JPEG, PNG",
+  "provider": {
+    "id": "provider-001",
+    "name": "AI Research Lab",
+    "avatar": "/green-bot.png"
+  },
+  "metadata": {
+    "tags": [
+      "computer-vision",
+      "image-classification",
+      "machine-learning",
+      "deep-learning"
+    ],
+    "license": "Commercial",
+    "quality": 95,
+    "samples": 2100000,
+    "features": [
+      "RGB Images",
+      "1000 Classes",
+      "High Resolution",
+      "Balanced Dataset"
+    ],
+    "previewUrl": "/api/datasets/dataset-001/preview",
+    "thumbnailUrl": "/clones-logo-purple.svg"
+  },
+  "createdAt": "2024-01-15T10:30:00Z",
+  "updatedAt": "2024-01-20T14:22:00Z",
+  "owner": "0x2a260a110bc7b03f19C40a0BD04FF2C5DCB57594"
+}
