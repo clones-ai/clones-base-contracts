@@ -24,7 +24,13 @@
         "echidna:factory": "echidna . --contract EchidnaFactoryFuzzer --config echidna-factory.yaml",
         "echidna:token": "echidna . --contract EchidnaTokenTest --config echidna-quick.yaml",
         "echidna:all": "npm run echidna:rewardpool && npm run echidna:factory",
-        "echidna:quick": "npm run echidna:token"
+        "echidna:quick": "npm run echidna:token",
+        "deploy-datamarketplace:baseSepolia": "hardhat run scripts/datamarketplace/deploy-complete-system.ts --network baseSepolia",
+        "deploy-datamarketplace:base": "hardhat run scripts/datamarketplace/deploy-complete-system.ts --network base",
+        "verify-datamarketplace:baseSepolia": "hardhat run scripts/datamarketplace/verify-contracts.ts --network baseSepolia",
+        "verify-datamarketplace:base": "hardhat run scripts/datamarketplace/verify-contracts.ts --network base",
+        "test-datamarketplace:baseSepolia": "hardhat run scripts/datamarketplace/test-deployment.ts --network baseSepolia",
+        "test-datamarketplace:base": "hardhat run scripts/datamarketplace/test-deployment.ts --network base"
     },
     "devDependencies": {
         "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
