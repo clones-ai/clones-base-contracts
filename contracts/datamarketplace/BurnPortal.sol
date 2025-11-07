@@ -46,7 +46,7 @@ contract BurnPortal is AccessControl, Pausable, ReentrancyGuard {
     mapping(address => BurnStats) public burnStats;
     /// @notice Mapping of dataset token => array of burners
     mapping(address => address[]) public datasetBurners;
-    /// @notice Mapping of dataset token => user => burn index (for efficient lookups)
+    /// @notice Mapping of dataset token => user => burn index + 1 (0 = not burned, 1+ = array index + 1)
     mapping(address => mapping(address => uint256)) public burnerIndex;
 
     // ----------- Structs ----------- //
@@ -167,10 +167,10 @@ contract BurnPortal is AccessControl, Pausable, ReentrancyGuard {
         stats.burnCount += 1;
         stats.lastBurnTime = block.timestamp;
 
-        // Track burner
+        // Track burner (store index + 1 to distinguish from uninitialized)
         if (burnerIndex[datasetToken][msg.sender] == 0) {
             datasetBurners[datasetToken].push(msg.sender);
-            burnerIndex[datasetToken][msg.sender] = datasetBurners[datasetToken].length;
+            burnerIndex[datasetToken][msg.sender] = datasetBurners[datasetToken].length; // Store as length (1-based)
         }
 
         emit TokensBurnedForAccess(datasetToken, msg.sender, amount, burnThreshold, block.timestamp);

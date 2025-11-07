@@ -165,6 +165,7 @@ contract DatasetTokenImplementation is ERC20, ERC20Burnable, ReentrancyGuard {
      * @param _burnPortal Burn portal contract address
      */
     function setBurnPortal(address _burnPortal) external onlyCreatorOrFactory {
+        if (burnPortal != address(0)) revert SecurityViolation("already_set");
         if (_burnPortal == address(0)) revert InvalidParameter("burn_portal");
         burnPortal = _burnPortal;
         emit BurnPortalSet(_burnPortal);

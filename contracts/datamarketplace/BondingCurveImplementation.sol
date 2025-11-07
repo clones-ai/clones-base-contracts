@@ -156,7 +156,7 @@ contract BondingCurveImplementation is ReentrancyGuard {
      * @return tokensOut Amount of tokens received
      */
     function buyTokens(uint256 minTokensOut) external payable nonReentrant tradingOpen returns (uint256 tokensOut) {
-        if (msg.value == 0) revert InvalidParameter("eth_amount");
+        if (msg.value == 0) revert InvalidParameter("no_eth_sent");
 
         // Calculate tokens out using constant product formula
         tokensOut = getTokensOut(msg.value);
