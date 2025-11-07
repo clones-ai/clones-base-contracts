@@ -179,23 +179,26 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
 
         // Get current launch fee (oracle or fallback)
         uint256 currentLaunchFee = getCurrentLaunchFee();
-        
+
         // Transfer CLONES launch fee
         CLONES_TOKEN.safeTransferFrom(msg.sender, PROTOCOL_FEE_RECIPIENT, currentLaunchFee);
 
         // Generate deterministic addresses using CREATE2
         uint256 nonce = creatorNonce[msg.sender];
         bytes32 salt = _computeSalt(msg.sender, name, symbol, nonce);
-        
+
         // Deploy dataset token clone
         datasetToken = Clones.cloneDeterministic(DATASET_TOKEN_IMPLEMENTATION, salt);
-        
+
         // Deploy bonding curve clone with liquidity
         bondingCurve = Clones.cloneDeterministic(BONDING_CURVE_IMPLEMENTATION, _modifySalt(salt, 1));
 
         // Verify predictions match reality (sanity check)
         (address predictedToken, address predictedCurve) = predictDatasetAddressWithNonce(
-            msg.sender, name, symbol, nonce
+            msg.sender,
+            name,
+            symbol,
+            nonce
         );
         if (datasetToken != predictedToken || bondingCurve != predictedCurve) {
             revert SecurityViolation("create2_mismatch");
@@ -279,16 +282,12 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
         uint256 nonce
     ) public view returns (address datasetToken, address bondingCurve) {
         bytes32 salt = _computeSalt(creator, name, symbol, nonce);
-        
-        datasetToken = Clones.predictDeterministicAddress(
-            DATASET_TOKEN_IMPLEMENTATION, 
-            salt, 
-            address(this)
-        );
-        
+
+        datasetToken = Clones.predictDeterministicAddress(DATASET_TOKEN_IMPLEMENTATION, salt, address(this));
+
         bondingCurve = Clones.predictDeterministicAddress(
-            BONDING_CURVE_IMPLEMENTATION, 
-            _modifySalt(salt, 1), 
+            BONDING_CURVE_IMPLEMENTATION,
+            _modifySalt(salt, 1),
             address(this)
         );
     }
@@ -329,7 +328,7 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
         if (!useOracle) {
             return fallbackLaunchFee;
         }
-        
+
         try this._getOracleLaunchFee() returns (uint256 oracleFee) {
             return oracleFee;
         } catch {
@@ -344,17 +343,17 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
      */
     function _getOracleLaunchFee() external view returns (uint256 oracleFee) {
         (, int256 price, , uint256 updatedAt, ) = CLONES_USD_PRICE_FEED.latestRoundData();
-        
+
         // Validate price data
-        if (price <= 0) revert SecurityViolation("invalid_price");
+        if (price < 0) revert SecurityViolation("invalid_price");
         if (block.timestamp - updatedAt > PRICE_STALENESS_THRESHOLD) {
             revert SecurityViolation("stale_price");
         }
-        
+
         // Convert price to 18 decimals (Chainlink typically uses 8 decimals)
         uint8 priceFeedDecimals = CLONES_USD_PRICE_FEED.decimals();
         uint256 clonesPrice = uint256(price) * (10 ** (18 - priceFeedDecimals));
-        
+
         // Calculate CLONES amount for TARGET_LAUNCH_FEE_USD
         // CLONES token has 18 decimals
         oracleFee = Math.mulDiv(TARGET_LAUNCH_FEE_USD, 1e18, clonesPrice);
@@ -418,10 +417,7 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
      * @return creator Dataset creator
      * @return bondingCurve Bonding curve address
      */
-    function getDatasetInfo(address datasetToken) external view returns (
-        address creator,
-        address bondingCurve
-    ) {
+    function getDatasetInfo(address datasetToken) external view returns (address creator, address bondingCurve) {
         creator = datasetCreators[datasetToken];
         bondingCurve = datasetBondingCurves[datasetToken];
     }
@@ -454,7 +450,7 @@ interface IDatasetTokenImplementation {
         address factory,
         uint8 burnThresholdPercentage
     ) external;
-    
+
     function setBondingCurve(address bondingCurve) external;
     function setGraduationManager(address graduationManager) external;
     function setBurnPortal(address burnPortal) external;
