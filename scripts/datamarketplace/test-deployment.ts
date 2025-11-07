@@ -87,7 +87,7 @@ async function main() {
         );
 
         console.log("Transaction hash:", createTx.hash);
-        const receipt = await createTx.wait();
+        await createTx.wait();
         console.log("Dataset created successfully!");
 
         // Test 5: Verify created dataset

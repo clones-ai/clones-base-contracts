@@ -76,8 +76,8 @@ async function main() {
         console.log("\nDeploying BurnPortal...");
         const BurnPortalFactory = await ethers.getContractFactory("BurnPortal");
         const burnPortal = await BurnPortalFactory.deploy(
-            ethers.ZeroAddress, // datasetFactory (will be set later)
-            graduationManagerAddress
+            timelockAddress,
+            guardianAddress
         );
         await burnPortal.waitForDeployment();
         const burnPortalAddress = await burnPortal.getAddress();
@@ -86,7 +86,7 @@ async function main() {
         deployments.contracts.BurnPortal = {
             address: burnPortalAddress,
             txHash: burnPortal.deploymentTransaction()?.hash,
-            args: [ethers.ZeroAddress, graduationManagerAddress]
+            args: [timelockAddress, guardianAddress]
         };
 
         // Update deployment registry
@@ -102,7 +102,7 @@ async function main() {
         // Verification commands
         console.log("\nVerification Commands:");
         console.log(`npx hardhat verify --network ${network.name} ${graduationManagerAddress} "${uniswapV2Factory}" "${uniswapV2Router}" "${weth}" "${timelockAddress}" "${guardianAddress}"`);
-        console.log(`npx hardhat verify --network ${network.name} ${burnPortalAddress} "${ethers.ZeroAddress}" "${graduationManagerAddress}"`);
+        console.log(`npx hardhat verify --network ${network.name} ${burnPortalAddress} "${timelockAddress}" "${guardianAddress}"`);
 
     } catch (error) {
         console.error("Deployment failed:", error);

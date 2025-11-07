@@ -48,6 +48,10 @@ contract DatasetTokenImplementation is ERC20, ERC20Burnable, ReentrancyGuard {
     bool public isGraduated;
     /// @notice Whether this implementation has been initialized
     bool private _initialized;
+    /// @notice Token name for proxy instances
+    string private _proxyName;
+    /// @notice Token symbol for proxy instances
+    string private _proxySymbol;
 
     // ----------- Events ----------- //
     /// @notice Emitted when tokens are burned for dataset download
@@ -116,9 +120,9 @@ contract DatasetTokenImplementation is ERC20, ERC20Burnable, ReentrancyGuard {
             revert InvalidParameter("burn_threshold");
         }
 
-        // Initialize ERC20 storage manually (since constructor won't run)
-        _name = _name;
-        _symbol = _symbol;
+        // Store name and symbol for proxy instances
+        _proxyName = _name;
+        _proxySymbol = _symbol;
 
         creator = _creator;
         factory = _factory;
@@ -207,6 +211,22 @@ contract DatasetTokenImplementation is ERC20, ERC20Burnable, ReentrancyGuard {
      */
     function decimals() public pure override returns (uint8) {
         return DECIMALS;
+    }
+
+    /**
+     * @notice Get token name
+     * @return Token name for this proxy instance
+     */
+    function name() public view override returns (string memory) {
+        return _initialized ? _proxyName : super.name();
+    }
+
+    /**
+     * @notice Get token symbol
+     * @return Token symbol for this proxy instance
+     */
+    function symbol() public view override returns (string memory) {
+        return _initialized ? _proxySymbol : super.symbol();
     }
 
     /**

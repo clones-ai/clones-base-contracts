@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { BurnPortal, DatasetFactory } from "../../typechain-types";
+import { BurnPortal } from "../../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("BurnPortal Basic Tests", function () {
@@ -40,8 +40,7 @@ describe("BurnPortal Basic Tests", function () {
         it("should get dataset burn info", async function () {
             // Deploy a mock dataset token to test with
             const MockTokenFactory = await ethers.getContractFactory("TestToken");
-            const mockDataset = await MockTokenFactory.deploy("DATASET", "DATA", 18);
-            
+
             // This will revert if the dataset doesn't implement getDatasetInfo
             // So we just check that the function exists
             expect(burnPortal.getDatasetBurnInfo).to.exist;
@@ -86,10 +85,10 @@ describe("BurnPortal Basic Tests", function () {
     describe("Access Control", function () {
         it("should manage roles correctly", async function () {
             const timelockRole = await burnPortal.TIMELOCK_ROLE();
-            
+
             // Check timelock has the role
             expect(await burnPortal.hasRole(timelockRole, owner.address)).to.be.true;
-            
+
             // Check emergency role
             const emergencyRole = await burnPortal.EMERGENCY_ROLE();
             expect(await burnPortal.hasRole(emergencyRole, owner.address)).to.be.true;
