@@ -159,6 +159,7 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
     /**
      * @notice Create a new dataset token with bonding curve using EIP-1167 minimal proxy pattern
      * @dev Uses deterministic CREATE2 for predictable addresses
+     * @dev IMPORTANT: Requires graduationManager and burnPortal to be configured first via governance
      * @param name Dataset token name
      * @param symbol Dataset token symbol
      * @param burnThresholdPercentage Percentage of supply required to burn (1-10%)
@@ -411,6 +412,15 @@ contract DatasetFactory is AccessControl, Pausable, ReentrancyGuard {
     }
 
     // ----------- View Functions ----------- //
+    /**
+     * @notice Check if factory is ready for dataset creation
+     * @dev Returns true when both graduationManager and burnPortal are configured
+     * @return ready Whether the factory can create datasets
+     */
+    function isReadyForDatasetCreation() external view returns (bool ready) {
+        return graduationManager != address(0) && burnPortal != address(0);
+    }
+
     /**
      * @notice Get dataset info
      * @param datasetToken Dataset token address

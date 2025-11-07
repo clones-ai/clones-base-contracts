@@ -25,6 +25,8 @@ npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network base
 npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network base
 ```
 
+⚠️ **Important**: Dataset creation is **BLOCKED** until both `graduationManager` and `burnPortal` are configured post-deployment.
+
 ### Option 2: Step-by-Step Deployment
 
 ```bash
@@ -201,8 +203,9 @@ All scripts use the unified registry system:
 
 - [ ] All implementations deployed
 - [ ] Factory configured with correct implementations
-- [ ] BurnPortal references the factory
-- [ ] GraduationManager configured
+- [ ] GraduationManager configured in factory
+- [ ] BurnPortal configured in factory
+- [ ] **Factory ready check**: `await factory.isReadyForDatasetCreation()` returns `true`
 - [ ] Test dataset creation successful
 - [ ] Contracts verified on Basescan
 
@@ -212,7 +215,13 @@ All scripts use the unified registry system:
 # Check factory state
 npx hardhat console --network baseSepolia
 > const factory = await ethers.getContractAt("DatasetFactory", "0x...")
-> await factory.getTotalDatasets()
+
+# IMPORTANT: Check if factory is ready for dataset creation
+> await factory.isReadyForDatasetCreation()  // Must return true
+
+# Check required addresses are set
+> await factory.graduationManager()  // Must not be 0x000...
+> await factory.burnPortal()         // Must not be 0x000...
 
 # Check implementations
 > await factory.DATASET_TOKEN_IMPLEMENTATION()
@@ -237,10 +246,10 @@ npx hardhat run scripts/datamarketplace/deploy-implementations.ts --network base
 
 **3. "Factory address not set in BurnPortal"**
 ```bash
-# Solution: Update factory address
+# Solution: Update factory address (requires timelock)
 npx hardhat console --network baseSepolia
 > const burnPortal = await ethers.getContractAt("BurnPortal", "0x...")
-> await burnPortal.updateDatasetFactory("0x...")
+> await burnPortal.setDatasetFactory("0x...")
 ```
 
 ### Logs and Debug

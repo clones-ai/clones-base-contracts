@@ -42,6 +42,26 @@ describe("DatasetFactory Basic Tests", function () {
         // Give creator some CLONES tokens
         await mockClonesToken.transfer(creator.address, ethers.parseEther("1000"));
         await mockClonesToken.connect(creator).approve(await datasetFactory.getAddress(), ethers.parseEther("1000"));
+
+        // Deploy and configure required managers for dataset creation
+        const GraduationManagerFactory = await ethers.getContractFactory("GraduationManager");
+        const graduationManager = await GraduationManagerFactory.deploy(
+            "0x4200000000000000000000000000000000000006", // Mock Uniswap V2 Factory
+            "0x4200000000000000000000000000000000000006", // Mock Uniswap V2 Router
+            "0x4200000000000000000000000000000000000006", // Mock WETH
+            owner.address, // timelock
+            owner.address  // guardian
+        );
+
+        const BurnPortalFactory = await ethers.getContractFactory("BurnPortal");
+        const burnPortal = await BurnPortalFactory.deploy(
+            owner.address, // timelock
+            owner.address  // guardian
+        );
+
+        // Configure factory with required addresses
+        await datasetFactory.setGraduationManager(await graduationManager.getAddress());
+        await datasetFactory.setBurnPortal(await burnPortal.getAddress());
     });
 
     describe("Deployment", function () {
@@ -58,6 +78,10 @@ describe("DatasetFactory Basic Tests", function () {
         it("should have correct price feeds", async function () {
             expect(await datasetFactory.CLONES_USD_PRICE_FEED()).to.equal("0x0000000000000000000000000000000000000001");
             expect(await datasetFactory.ETH_USD_PRICE_FEED()).to.equal("0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1");
+        });
+
+        it("should be ready for dataset creation after managers setup", async function () {
+            expect(await datasetFactory.isReadyForDatasetCreation()).to.equal(true);
         });
     });
 

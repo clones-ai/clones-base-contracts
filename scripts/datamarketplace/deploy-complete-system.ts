@@ -192,6 +192,21 @@ async function main() {
         await graduationManager.setBurnPortal(burnPortalAddress);
         console.log("GraduationManager configured with BurnPortal");
 
+        // CRITICAL: Configure DatasetFactory with managers (required for dataset creation)
+        console.log("\nConfiguring DatasetFactory with managers...");
+        await datasetFactory.setGraduationManager(graduationManagerAddress);
+        console.log("DatasetFactory configured with GraduationManager");
+        
+        await datasetFactory.setBurnPortal(burnPortalAddress);
+        console.log("DatasetFactory configured with BurnPortal");
+        
+        // Verify factory is ready for dataset creation
+        const isReady = await datasetFactory.isReadyForDatasetCreation();
+        console.log("DatasetFactory ready for dataset creation:", isReady);
+        if (!isReady) {
+            throw new Error("DatasetFactory not ready for dataset creation!");
+        }
+
         // Save deployment registry
         deployments.timestamp = new Date().toISOString();
         deployments.configured = true;

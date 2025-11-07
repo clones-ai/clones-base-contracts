@@ -44,10 +44,6 @@ contract BurnPortal is AccessControl, Pausable, ReentrancyGuard {
     mapping(address => mapping(address => bool)) public hasAccess;
     /// @notice Mapping of dataset token => burn statistics
     mapping(address => BurnStats) public burnStats;
-    /// @notice Mapping of dataset token => array of burners
-    mapping(address => address[]) public datasetBurners;
-    /// @notice Mapping of dataset token => user => burn index + 1 (0 = not burned, 1+ = array index + 1)
-    mapping(address => mapping(address => uint256)) public burnerIndex;
 
     // ----------- Structs ----------- //
     struct BurnStats {
@@ -167,12 +163,6 @@ contract BurnPortal is AccessControl, Pausable, ReentrancyGuard {
         stats.burnCount += 1;
         stats.lastBurnTime = block.timestamp;
 
-        // Track burner (store index + 1 to distinguish from uninitialized)
-        if (burnerIndex[datasetToken][msg.sender] == 0) {
-            datasetBurners[datasetToken].push(msg.sender);
-            burnerIndex[datasetToken][msg.sender] = datasetBurners[datasetToken].length; // Store as length (1-based)
-        }
-
         emit TokensBurnedForAccess(datasetToken, msg.sender, amount, burnThreshold, block.timestamp);
     }
 
@@ -220,34 +210,12 @@ contract BurnPortal is AccessControl, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @notice Get number of burners for a dataset
+     * @notice Get number of unique burners for a dataset
      * @param datasetToken Dataset token address
-     * @return Number of unique burners
+     * @return Number of unique burners (from burnCount)
      */
     function getBurnerCount(address datasetToken) external view returns (uint256) {
-        return datasetBurners[datasetToken].length;
-    }
-
-    /**
-     * @notice Get burner address by index
-     * @param datasetToken Dataset token address
-     * @param index Burner index
-     * @return Burner address
-     */
-    function getBurner(address datasetToken, uint256 index) external view returns (address) {
-        if (index >= datasetBurners[datasetToken].length) {
-            revert InvalidParameter("index_out_of_bounds");
-        }
-        return datasetBurners[datasetToken][index];
-    }
-
-    /**
-     * @notice Get all burners for a dataset
-     * @param datasetToken Dataset token address
-     * @return Array of burner addresses
-     */
-    function getAllBurners(address datasetToken) external view returns (address[] memory) {
-        return datasetBurners[datasetToken];
+        return burnStats[datasetToken].burnCount;
     }
 
     /**

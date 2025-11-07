@@ -50,8 +50,6 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
     // ----------- Graduation Tracking ----------- //
     /// @notice Mapping of dataset token => graduation info
     mapping(address => GraduationInfo) public graduationInfo;
-    /// @notice Array of all graduated datasets
-    address[] public graduatedDatasets;
 
     // ----------- Structs ----------- //
     struct GraduationInfo {
@@ -177,7 +175,6 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
             isGraduated: true
         });
 
-        graduatedDatasets.push(datasetToken);
 
         // Activate burn portal if available
         if (burnPortal != address(0)) {
@@ -289,23 +286,6 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
         return graduationInfo[datasetToken];
     }
 
-    /**
-     * @notice Get total number of graduated datasets
-     * @return Total graduated dataset count
-     */
-    function getGraduatedDatasetCount() external view returns (uint256) {
-        return graduatedDatasets.length;
-    }
-
-    /**
-     * @notice Get graduated dataset by index
-     * @param index Dataset index
-     * @return Dataset token address
-     */
-    function getGraduatedDataset(uint256 index) external view returns (address) {
-        if (index >= graduatedDatasets.length) revert InvalidParameter("index_out_of_bounds");
-        return graduatedDatasets[index];
-    }
 
     /**
      * @notice Check if a dataset has graduated
