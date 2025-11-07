@@ -1,175 +1,175 @@
 # Datamarketplace Deployment Scripts
 
-Scripts de déploiement et gestion pour les contrats du datamarketplace utilisant le pattern EIP-1167 factory.
+Deployment and management scripts for datamarketplace contracts using the EIP-1167 factory pattern.
 
-## 📁 Structure des Scripts
+## 📁 Script Structure
 
 ```
 scripts/datamarketplace/
-├── deploy-implementations.ts    # Déploie les contrats d'implémentation (étape 1)
-├── deploy-managers.ts          # Déploie GraduationManager et BurnPortal (étape 2)
-├── deploy-factory.ts           # Déploie DatasetFactory (étape 3)
-├── deploy-complete-system.ts   # Déploiement complet orchestré (recommandé)
-├── verify-contracts.ts         # Vérification sur block explorer
-├── test-deployment.ts          # Test de fonctionnement du système
-└── README.md                   # Ce fichier
+├── deploy-implementations.ts    # Deploys implementation contracts (step 1)
+├── deploy-managers.ts          # Deploy GraduationManager and BurnPortal (step 2)
+├── deploy-factory.ts           # Deploy DatasetFactory (step 3)
+├── deploy-complete-system.ts   # Complete orchestrated deployment (recommended)
+├── verify-contracts.ts         # Verification on block explorer
+├── test-deployment.ts          # System functionality testing
+└── README.md                   # This file
 ```
 
-## 🚀 Ordre de Déploiement
+## 🚀 Deployment Order
 
-### Option 1: Déploiement Complet (Recommandé)
+### Option 1: Complete Deployment (Recommended)
 
 ```bash
-# Déploie tout le système en une fois
+# Deploy the entire system at once
 npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network baseSepolia
 npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network base
 ```
 
-### Option 2: Déploiement Étape par Étape
+### Option 2: Step-by-Step Deployment
 
 ```bash
-# 1. Déployer les implémentations
+# 1. Deploy implementations
 npx hardhat run scripts/datamarketplace/deploy-implementations.ts --network baseSepolia
 
-# 2. Déployer les managers
+# 2. Deploy managers
 npx hardhat run scripts/datamarketplace/deploy-managers.ts --network baseSepolia
 
-# 3. Déployer la factory
+# 3. Deploy factory
 npx hardhat run scripts/datamarketplace/deploy-factory.ts --network baseSepolia
 ```
 
-## 📋 Pré-requis
+## 📋 Prerequisites
 
-### Variables d'Environnement
+### Environment Variables
 
-Créer un fichier `.env` avec :
+Create a `.env` file with:
 
 ```bash
-# Clé privée du déployeur
+# Deployer private key
 PRIVATE_KEY=your_private_key_here
 
-# URLs RPC
+# RPC URLs
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_RPC_URL=https://mainnet.base.org
 
-# API Key pour vérification
+# API Key for verification
 ETHERSCAN_API_KEY=your_basescan_api_key
 
-# Adresses optionnelles (utilise le déployeur par défaut si non spécifiées)
+# Optional addresses (uses deployer as default if not specified)
 PROTOCOL_FEE_RECIPIENT=0x...
 TIMELOCK_ADDRESS=0x...
 GUARDIAN_ADDRESS=0x...
 ```
 
-### Tokens Requis
+### Required Tokens
 
-**Pour tester :** Le déployeur doit avoir des tokens CLONES pour payer les frais de lancement.
+**For testing:** The deployer must have CLONES tokens to pay launch fees.
 
-**Adresses des tokens CLONES :**
+**CLONES token addresses:**
 - Base Mainnet: `0xaadd98Ad4660008C917C6FE7286Bc54b2eEF894d`
 - Base Sepolia: `0x15eB86c7E54B350bf936d916Df33AEF697202E29`
 
-## 🔧 Scripts Détaillés
+## 🔧 Detailed Scripts
 
 ### 1. deploy-implementations.ts
 
-Déploie les contrats maîtres pour le pattern EIP-1167 :
+Deploys the master contracts for the EIP-1167 pattern:
 - `DatasetTokenImplementation.sol`
 - `BondingCurveImplementation.sol`
 
-**Usage :**
+**Usage:**
 ```bash
 npx hardhat run scripts/datamarketplace/deploy-implementations.ts --network baseSepolia
 ```
 
-**Output :** Sauvegarde les adresses dans `deployments/{network}.json`
+**Output:** Saves addresses in `deployments/{network}.json`
 
 ### 2. deploy-managers.ts
 
-Déploie les contrats de gestion :
-- `GraduationManager.sol` - Gère la graduation vers Uniswap V2
-- `BurnPortal.sol` - Gère le burn-to-download
+Deploys the management contracts:
+- `GraduationManager.sol` - Manages graduation to Uniswap V2
+- `BurnPortal.sol` - Manages burn-to-download
 
-**Configuration automatique :**
-- Base Mainnet : Adresses Uniswap V2 réelles
-- Base Sepolia : Adresses de test
+**Automatic configuration:**
+- Base Mainnet: Real Uniswap V2 addresses
+- Base Sepolia: Test addresses
 
-**Usage :**
+**Usage:**
 ```bash
 npx hardhat run scripts/datamarketplace/deploy-managers.ts --network baseSepolia
 ```
 
 ### 3. deploy-factory.ts
 
-Déploie la factory principale `DatasetFactory.sol`.
+Deploys the main factory `DatasetFactory.sol`.
 
-**Pré-requis :** Les implémentations doivent être déployées.
+**Prerequisites:** Implementations must be deployed.
 
-**Paramètres configurés :**
-- Frais de lancement : 100 CLONES (~$50)
-- Liquidité min : 0.01 ETH
-- Liquidité max : 100 ETH
+**Configured parameters:**
+- Launch fee: 100 CLONES (~$50)
+- Min liquidity: 0.01 ETH
+- Max liquidity: 100 ETH
 
-**Usage :**
+**Usage:**
 ```bash
 npx hardhat run scripts/datamarketplace/deploy-factory.ts --network baseSepolia
 ```
 
 ### 4. deploy-complete-system.ts
 
-Orchestration complète qui :
-1. Déploie toutes les implémentations
-2. Déploie les managers
-3. Déploie la factory
-4. Configure les interconnexions
-5. Teste la configuration
+Complete orchestration that:
+1. Deploys all implementations
+2. Deploys managers
+3. Deploys factory
+4. Configures interconnections
+5. Tests configuration
 
-**Usage :**
+**Usage:**
 ```bash
 npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network baseSepolia
 ```
 
-**Avantages :**
-- Déploiement atomique
-- Configuration automatique
-- Validation post-déploiement
+**Advantages:**
+- Atomic deployment
+- Automatic configuration
+- Post-deployment validation
 
 ### 5. verify-contracts.ts
 
-Vérifie tous les contrats sur Basescan.
+Verifies all contracts on Basescan.
 
-**Pré-requis :** `ETHERSCAN_API_KEY` configurée.
+**Prerequisites:** `ETHERSCAN_API_KEY` configured.
 
-**Usage :**
+**Usage:**
 ```bash
 npx hardhat run scripts/datamarketplace/verify-contracts.ts --network baseSepolia
 ```
 
-**Fonctionnalités :**
-- Lit les arguments depuis le registre
-- Gère les contrats déjà vérifiés
-- Affiche les liens block explorer
+**Features:**
+- Reads arguments from registry
+- Handles already verified contracts
+- Displays block explorer links
 
 ### 6. test-deployment.ts
 
-Test end-to-end du système déployé.
+End-to-end testing of the deployed system.
 
-**Tests effectués :**
-1. ✅ Vérification état factory
-2. ✅ Balance et allowance CLONES
-3. ✅ Prédiction d'adresses
-4. ✅ Création de dataset test
-5. ✅ Vérification proxies EIP-1167
-6. ✅ Achat de tokens sur bonding curve
+**Tests performed:**
+1. ✅ Factory state verification
+2. ✅ CLONES balance and allowance
+3. ✅ Address prediction
+4. ✅ Test dataset creation
+5. ✅ EIP-1167 proxy verification
+6. ✅ Token purchase on bonding curve
 
-**Usage :**
+**Usage:**
 ```bash
 npx hardhat run scripts/datamarketplace/test-deployment.ts --network baseSepolia
 ```
 
-## 📊 Système de Registre
+## 📊 Registry System
 
-Tous les scripts utilisent le système de registre unifié :
+All scripts use the unified registry system:
 
 ```json
 {
@@ -193,59 +193,59 @@ Tous les scripts utilisent le système de registre unifié :
 }
 ```
 
-**Localisation :** `deployments/{network}.json`
+**Location:** `deployments/{network}.json`
 
-## 🔍 Vérification Post-Déploiement
+## 🔍 Post-Deployment Verification
 
-### Checklist de Validation
+### Validation Checklist
 
-- [ ] Toutes les implémentations déployées
-- [ ] Factory configurée avec bonnes implémentations
-- [ ] BurnPortal référence la factory
-- [ ] GraduationManager configuré
-- [ ] Test de création dataset réussi
-- [ ] Contrats vérifiés sur Basescan
+- [ ] All implementations deployed
+- [ ] Factory configured with correct implementations
+- [ ] BurnPortal references the factory
+- [ ] GraduationManager configured
+- [ ] Test dataset creation successful
+- [ ] Contracts verified on Basescan
 
-### Commandes de Diagnostic
+### Diagnostic Commands
 
 ```bash
-# Vérifier l'état de la factory
+# Check factory state
 npx hardhat console --network baseSepolia
 > const factory = await ethers.getContractAt("DatasetFactory", "0x...")
 > await factory.getTotalDatasets()
 
-# Vérifier les implémentations
+# Check implementations
 > await factory.DATASET_TOKEN_IMPLEMENTATION()
 > await factory.BONDING_CURVE_IMPLEMENTATION()
 ```
 
-## 🛠 Dépannage
+## 🛠 Troubleshooting
 
-### Erreurs Communes
+### Common Errors
 
 **1. "Implementation not found"**
 ```bash
-# Solution: Déployer les implémentations d'abord
+# Solution: Deploy implementations first
 npx hardhat run scripts/datamarketplace/deploy-implementations.ts --network baseSepolia
 ```
 
 **2. "Insufficient CLONES balance"**
 ```bash
-# Solution: Obtenir des tokens CLONES de test
-# Sur Sepolia, contacter l'équipe pour des tokens de test
+# Solution: Get test CLONES tokens
+# On Sepolia, contact team for test tokens
 ```
 
 **3. "Factory address not set in BurnPortal"**
 ```bash
-# Solution: Mettre à jour l'adresse factory
+# Solution: Update factory address
 npx hardhat console --network baseSepolia
 > const burnPortal = await ethers.getContractAt("BurnPortal", "0x...")
 > await burnPortal.updateDatasetFactory("0x...")
 ```
 
-### Logs et Debug
+### Logs and Debug
 
-Activer le debug détaillé :
+Enable detailed debugging:
 ```bash
 DEBUG=* npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network baseSepolia
 ```
@@ -255,34 +255,34 @@ DEBUG=* npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --netw
 ### Base Mainnet
 
 ```bash
-# Variables d'environnement production
-export PROTOCOL_FEE_RECIPIENT=0x... # Adresse treasury
-export TIMELOCK_ADDRESS=0x...      # Adresse multisig timelock
-export GUARDIAN_ADDRESS=0x...      # Adresse guardian
+# Production environment variables
+export PROTOCOL_FEE_RECIPIENT=0x... # Treasury address
+export TIMELOCK_ADDRESS=0x...      # Multisig timelock address
+export GUARDIAN_ADDRESS=0x...      # Guardian address
 
-# Déploiement production
+# Production deployment
 npx hardhat run scripts/datamarketplace/deploy-complete-system.ts --network base
 
-# Vérification
+# Verification
 npx hardhat run scripts/datamarketplace/verify-contracts.ts --network base
 
-# Test système
+# System testing
 npx hardhat run scripts/datamarketplace/test-deployment.ts --network base
 ```
 
-### Sécurité
+### Security
 
-⚠️ **Important pour la production :**
-- Utiliser un multisig comme deployer
-- Vérifier toutes les adresses avant déploiement
-- Tester sur Sepolia avant mainnet
-- Conserver une copie du registre de déploiement
-- Documenter toutes les adresses pour l'équipe
+⚠️ **Important for production:**
+- Use a multisig as deployer
+- Verify all addresses before deployment
+- Test on Sepolia before mainnet
+- Keep a copy of the deployment registry
+- Document all addresses for the team
 
 ## 📞 Support
 
-En cas de problème :
-1. Vérifier les logs de déploiement
-2. Consulter le registre `deployments/{network}.json`
-3. Tester avec `test-deployment.ts`
-4. Contacter l'équipe avec les détails d'erreur
+In case of issues:
+1. Check deployment logs
+2. Consult the registry `deployments/{network}.json`
+3. Test with `test-deployment.ts`
+4. Contact the team with error details
