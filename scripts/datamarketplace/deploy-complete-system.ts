@@ -125,8 +125,8 @@ async function main() {
         console.log("\nDeploying BurnPortal...");
         const BurnPortalFactory = await ethers.getContractFactory("BurnPortal");
         const burnPortal = await BurnPortalFactory.deploy(
-            ethers.ZeroAddress, // Factory address (will be set later)
-            graduationManagerAddress
+            timelockAddress, // timelock
+            guardianAddress  // guardian
         );
         await burnPortal.waitForDeployment();
         const burnPortalAddress = await burnPortal.getAddress();
@@ -135,7 +135,7 @@ async function main() {
         deployments.contracts.BurnPortal = {
             address: burnPortalAddress,
             txHash: burnPortal.deploymentTransaction()?.hash,
-            args: [ethers.ZeroAddress, graduationManagerAddress]
+            args: [timelockAddress, guardianAddress]
         };
 
         // Phase 3: Deploy Factory
@@ -184,6 +184,14 @@ async function main() {
         await graduationManager.setDatasetFactory(datasetFactoryAddress);
         console.log("GraduationManager configured with DatasetFactory");
 
+        console.log("\nSetting GraduationManager in BurnPortal...");
+        await burnPortal.setGraduationManager(graduationManagerAddress);
+        console.log("BurnPortal configured with GraduationManager");
+
+        console.log("\nSetting BurnPortal in GraduationManager...");
+        await graduationManager.setBurnPortal(burnPortalAddress);
+        console.log("GraduationManager configured with BurnPortal");
+
         // Save deployment registry
         deployments.timestamp = new Date().toISOString();
         deployments.configured = true;
@@ -203,7 +211,7 @@ async function main() {
         console.log(`npx hardhat verify --network ${network.name} ${datasetTokenImplAddress}`);
         console.log(`npx hardhat verify --network ${network.name} ${bondingCurveImplAddress}`);
         console.log(`npx hardhat verify --network ${network.name} ${graduationManagerAddress} "${uniswapV2Factory}" "${uniswapV2Router}" "${weth}" "${timelockAddress}" "${guardianAddress}"`);
-        console.log(`npx hardhat verify --network ${network.name} ${burnPortalAddress} "${ethers.ZeroAddress}" "${graduationManagerAddress}"`);
+        console.log(`npx hardhat verify --network ${network.name} ${burnPortalAddress} "${timelockAddress}" "${guardianAddress}"`);
         console.log(`npx hardhat verify --network ${network.name} ${datasetFactoryAddress} "${datasetTokenImplAddress}" "${bondingCurveImplAddress}" "${clonesToken}" "${protocolFeeRecipient}" "${timelockAddress}" "${guardianAddress}" "${clonesUsdPriceFeed}" "${ethUsdPriceFeed}" "${fallbackLaunchFee}"`);
 
         // System ready message

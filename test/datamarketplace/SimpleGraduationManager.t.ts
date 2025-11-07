@@ -55,57 +55,53 @@ describe("GraduationManager Basic Tests", function () {
             ).to.be.revertedWithCustomError(graduationManager, "Unauthorized");
         });
 
-        it("should allow guardian to set dataset factory in emergency", async function () {
+        it("should reject guardian setting dataset factory (only timelock)", async function () {
             await expect(
                 graduationManager.connect(guardian).setDatasetFactory(user.address)
-            ).to.emit(graduationManager, "DatasetFactoryUpdated");
-
-            expect(await graduationManager.datasetFactory()).to.equal(user.address);
+            ).to.be.revertedWithCustomError(graduationManager, "Unauthorized");
         });
     });
 
     describe("Emergency Functions", function () {
-        it("should allow guardian to pause", async function () {
-            await expect(
-                graduationManager.connect(guardian).pause()
-            ).to.emit(graduationManager, "Paused");
+        it("should allow guardian to rescue ETH", async function () {
+            // Send some ETH to the contract first
+            await timelock.sendTransaction({
+                to: await graduationManager.getAddress(),
+                value: ethers.parseEther("1.0")
+            });
 
-            expect(await graduationManager.paused()).to.be.true;
-        });
-
-        it("should allow timelock to unpause", async function () {
-            await graduationManager.connect(guardian).pause();
+            const guardianBalanceBefore = await ethers.provider.getBalance(guardian.address);
             
-            await expect(
-                graduationManager.connect(timelock).unpause()
-            ).to.emit(graduationManager, "Unpaused");
-
-            expect(await graduationManager.paused()).to.be.false;
+            await graduationManager.connect(guardian).rescueETH();
+            
+            const guardianBalanceAfter = await ethers.provider.getBalance(guardian.address);
+            expect(guardianBalanceAfter).to.be.greaterThan(guardianBalanceBefore);
         });
 
-        it("should reject non-authorized pause/unpause", async function () {
+        it("should reject non-guardian rescue attempts", async function () {
             await expect(
-                graduationManager.connect(user).pause()
+                graduationManager.connect(user).rescueETH()
             ).to.be.revertedWithCustomError(graduationManager, "Unauthorized");
+        });
 
-            await graduationManager.connect(guardian).pause();
-
+        it("should allow setting burn portal", async function () {
             await expect(
-                graduationManager.connect(user).unpause()
-            ).to.be.revertedWithCustomError(graduationManager, "Unauthorized");
+                graduationManager.connect(timelock).setBurnPortal(user.address)
+            ).to.emit(graduationManager, "BurnPortalUpdated");
+
+            expect(await graduationManager.burnPortal()).to.equal(user.address);
         });
     });
 
     describe("Graduation Data", function () {
-        it("should return empty graduation data for non-existent datasets", async function () {
-            const graduationData = await graduationManager.getGraduationData(user.address);
-            
-            expect(graduationData.isGraduated).to.be.false;
-            expect(graduationData.graduationTimestamp).to.equal(0);
-            expect(graduationData.ethReserves).to.equal(0);
-            expect(graduationData.tokenReserves).to.equal(0);
-            expect(graduationData.lpTokens).to.equal(0);
-            expect(graduationData.uniswapPair).to.equal(ethers.ZeroAddress);
+        it("should return empty graduation info for non-graduated datasets", async function () {
+            const isGrad = await graduationManager.isGraduated(user.address);
+            expect(isGrad).to.be.false;
+        });
+
+        it("should return zero graduated dataset count initially", async function () {
+            const count = await graduationManager.getGraduatedDatasetCount();
+            expect(count).to.equal(0);
         });
     });
 

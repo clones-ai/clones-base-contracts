@@ -11,9 +11,12 @@ describe("DatasetFactory Basic Tests", function () {
     beforeEach(async function () {
         [owner, creator] = await ethers.getSigners();
 
-        // Deploy a mock CLONES token for testing
+        // Deploy a mock CLONES token for testing with high initial supply
         const MockTokenFactory = await ethers.getContractFactory("TestToken");
         const mockClonesToken = await MockTokenFactory.deploy("CLONES", "CLONES", 18);
+        
+        // Mint tokens to owner first
+        await mockClonesToken.mint(owner.address, ethers.parseEther("100000"));
 
         // Deploy implementations
         const DatasetTokenImplFactory = await ethers.getContractFactory("DatasetTokenImplementation");
@@ -22,7 +25,7 @@ describe("DatasetFactory Basic Tests", function () {
         const BondingCurveImplFactory = await ethers.getContractFactory("BondingCurveImplementation");
         const curveImpl = await BondingCurveImplFactory.deploy();
 
-        // Deploy DatasetFactory
+        // Deploy DatasetFactory with correct constructor params
         const DatasetFactoryFactory = await ethers.getContractFactory("DatasetFactory");
         datasetFactory = await DatasetFactoryFactory.deploy(
             await tokenImpl.getAddress(),
@@ -30,10 +33,10 @@ describe("DatasetFactory Basic Tests", function () {
             await mockClonesToken.getAddress(),
             owner.address, // protocol fee recipient
             owner.address, // timelock
-            owner.address, // guardian  
-            ethers.parseEther("100"), // launch fee
-            ethers.parseEther("0.01"), // min liquidity
-            ethers.parseEther("100") // max liquidity
+            owner.address, // guardian
+            "0x0000000000000000000000000000000000000001", // CLONES/USD price feed (mock)
+            "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1", // ETH/USD price feed (Base Sepolia)
+            ethers.parseEther("100") // fallback launch fee
         );
 
         // Give creator some CLONES tokens
@@ -48,13 +51,13 @@ describe("DatasetFactory Basic Tests", function () {
             expect(await datasetFactory.GUARDIAN()).to.equal(owner.address);
         });
 
-        it("should have correct launch fee", async function () {
-            expect(await datasetFactory.LAUNCH_FEE()).to.equal(ethers.parseEther("100"));
+        it("should have correct fallback launch fee", async function () {
+            expect(await datasetFactory.fallbackLaunchFee()).to.equal(ethers.parseEther("100"));
         });
 
-        it("should have correct liquidity limits", async function () {
-            expect(await datasetFactory.MIN_INITIAL_LIQUIDITY()).to.equal(ethers.parseEther("0.01"));
-            expect(await datasetFactory.MAX_INITIAL_LIQUIDITY()).to.equal(ethers.parseEther("100"));
+        it("should have correct price feeds", async function () {
+            expect(await datasetFactory.CLONES_USD_PRICE_FEED()).to.equal("0x0000000000000000000000000000000000000001");
+            expect(await datasetFactory.ETH_USD_PRICE_FEED()).to.equal("0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1");
         });
     });
 
@@ -77,9 +80,9 @@ describe("DatasetFactory Basic Tests", function () {
             expect(currentFee).to.be.greaterThan(0);
         });
 
-        it("should get total datasets count", async function () {
-            const count = await datasetFactory.getTotalDatasets();
-            expect(count).to.equal(0);
+        it("should get creator nonce", async function () {
+            const nonce = await datasetFactory.creatorNonce(creator.address);
+            expect(nonce).to.equal(0);
         });
     });
 
@@ -91,24 +94,24 @@ describe("DatasetFactory Basic Tests", function () {
 
         it("should allow role queries", async function () {
             const timelockRole = await datasetFactory.TIMELOCK_ROLE();
-            const guardianRole = await datasetFactory.GUARDIAN_ROLE();
+            const emergencyRole = await datasetFactory.EMERGENCY_ROLE();
             
             expect(await datasetFactory.hasRole(timelockRole, owner.address)).to.be.true;
-            expect(await datasetFactory.hasRole(guardianRole, owner.address)).to.be.true;
+            expect(await datasetFactory.hasRole(emergencyRole, owner.address)).to.be.true;
         });
     });
 
     describe("Oracle Management", function () {
-        it("should start with no oracle", async function () {
-            expect(await datasetFactory.oracle()).to.equal(ethers.ZeroAddress);
+        it("should start with oracle enabled", async function () {
+            expect(await datasetFactory.useOracle()).to.be.true;
         });
 
-        it("should allow setting oracle", async function () {
+        it("should have graduation and burn portal setters", async function () {
             await expect(
-                datasetFactory.connect(owner).setOracle(creator.address)
-            ).to.emit(datasetFactory, "OracleUpdated");
+                datasetFactory.connect(owner).setGraduationManager(creator.address)
+            ).to.emit(datasetFactory, "GraduationManagerUpdated");
 
-            expect(await datasetFactory.oracle()).to.equal(creator.address);
+            expect(await datasetFactory.graduationManager()).to.equal(creator.address);
         });
     });
 
