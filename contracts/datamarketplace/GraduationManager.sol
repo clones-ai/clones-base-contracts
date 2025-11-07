@@ -175,7 +175,6 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
             isGraduated: true
         });
 
-
         // Activate burn portal if available
         if (burnPortal != address(0)) {
             IBurnPortal(burnPortal).activateDataset(datasetToken);
@@ -209,11 +208,11 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
     ) internal returns (address lpPair) {
         // Check if pair already exists
         lpPair = IUniswapV2Factory(UNISWAP_V2_FACTORY).getPair(datasetToken, WETH);
-        
+
         // Create pair only if it doesn't exist
         if (lpPair == address(0)) {
             lpPair = IUniswapV2Factory(UNISWAP_V2_FACTORY).createPair(datasetToken, WETH);
-            
+
             if (lpPair == address(0)) {
                 revert GraduationFailed("pair_creation_failed");
             }
@@ -290,7 +289,6 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
     function getGraduationInfo(address datasetToken) external view returns (GraduationInfo memory info) {
         return graduationInfo[datasetToken];
     }
-
 
     /**
      * @notice Check if a dataset has graduated
