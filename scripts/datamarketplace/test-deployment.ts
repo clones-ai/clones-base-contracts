@@ -109,19 +109,19 @@ async function main() {
 
         // Test 6: Basic token interactions
         console.log("\nTest 6: Token Interactions");
-        const token = await ethers.getContractAt("DatasetToken", predictedToken);
-        const curve = await ethers.getContractAt("BondingCurve", bondingCurveAddress);
+        const token = await ethers.getContractAt("DatasetTokenImplementation", predictedToken);
+        const curve = await ethers.getContractAt("BondingCurveImplementation", bondingCurveAddress);
 
         const tokenName = await token.name();
         const tokenSymbol = await token.symbol();
         const totalSupply = await token.totalSupply();
-        const isActive = await curve.isActive();
+        const isGraduated = await curve.isGraduated();
         const currentPrice = await curve.getCurrentPrice();
 
         console.log("Token name:", tokenName);
         console.log("Token symbol:", tokenSymbol);
         console.log("Total supply:", ethers.formatUnits(totalSupply, 6));
-        console.log("Curve active:", isActive);
+        console.log("Curve graduated:", isGraduated);
         console.log("Current price:", ethers.formatEther(currentPrice), "ETH per token");
 
         // Test 7: Buy some tokens
@@ -132,7 +132,7 @@ async function main() {
         console.log("Buying with:", ethers.formatEther(buyAmount), "ETH");
         console.log("Expected tokens:", ethers.formatUnits(tokensOut, 6));
 
-        const buyTx = await curve.buy(tokensOut, { value: buyAmount });
+        const buyTx = await curve.buyTokens(tokensOut, { value: buyAmount });
         await buyTx.wait();
 
         const tokenBalance = await token.balanceOf(deployer.address);

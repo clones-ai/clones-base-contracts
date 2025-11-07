@@ -18,7 +18,7 @@ async function main() {
 
     // Network validation
     if (chainId !== 84532 && chainId !== 31337 && chainId !== 8453) {
-        throw new Error("❌ This script supports Base Sepolia (84532), Base Mainnet (8453), or local (31337)");
+        throw new Error("This script supports Base Sepolia (84532), Base Mainnet (8453), or local (31337)");
     }
 
     const deployments: any = {
