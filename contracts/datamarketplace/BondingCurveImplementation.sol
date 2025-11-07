@@ -168,9 +168,9 @@ contract BondingCurveImplementation is ReentrancyGuard {
         uint256 protocolFee = totalFee - creatorFee;
         uint256 ethAfterFees = msg.value - totalFee;
 
-        // Update reserves
-        ethReserves += ethAfterFees;
-        tokenReserves -= tokensOut;
+        // Store new reserves for state update after external calls
+        uint256 newEthReserves = ethReserves + ethAfterFees;
+        uint256 newTokenReserves = tokenReserves - tokensOut;
 
         // Transfer tokens to buyer
         datasetToken.safeTransfer(msg.sender, tokensOut);
@@ -184,6 +184,10 @@ contract BondingCurveImplementation is ReentrancyGuard {
             (bool success, ) = protocolFeeRecipient.call{value: protocolFee}("");
             if (!success) revert SecurityViolation("protocol_fee_transfer");
         }
+
+        // Update reserves after external calls
+        ethReserves = newEthReserves;
+        tokenReserves = newTokenReserves;
 
         // Check graduation threshold using oracle
         if (_checkGraduationThreshold()) {
@@ -215,9 +219,9 @@ contract BondingCurveImplementation is ReentrancyGuard {
         uint256 protocolFee = totalFee - creatorFee;
         uint256 ethAfterFees = ethOut - totalFee;
 
-        // Update reserves
-        tokenReserves += tokensIn;
-        ethReserves -= ethOut;
+        // Store new reserves for state update after external calls
+        uint256 newTokenReserves = tokenReserves + tokensIn;
+        uint256 newEthReserves = ethReserves - ethOut;
 
         // Transfer tokens from seller
         datasetToken.safeTransferFrom(msg.sender, address(this), tokensIn);
@@ -235,6 +239,10 @@ contract BondingCurveImplementation is ReentrancyGuard {
             (bool success3, ) = protocolFeeRecipient.call{value: protocolFee}("");
             if (!success3) revert SecurityViolation("protocol_fee_transfer");
         }
+
+        // Update reserves after external calls
+        tokenReserves = newTokenReserves;
+        ethReserves = newEthReserves;
 
         emit TokensSold(msg.sender, tokensIn, ethAfterFees, creatorFee, protocolFee, getCurrentPrice());
     }

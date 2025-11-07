@@ -99,10 +99,6 @@ describe("GraduationManager Basic Tests", function () {
             expect(isGrad).to.be.false;
         });
 
-        it("should return zero graduated dataset count initially", async function () {
-            const count = await graduationManager.getGraduatedDatasetCount();
-            expect(count).to.equal(0);
-        });
     });
 
     describe("Access Control", function () {

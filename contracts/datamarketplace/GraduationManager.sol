@@ -207,11 +207,16 @@ contract GraduationManager is AccessControl, ReentrancyGuard {
         uint256 ethAmount,
         uint256 tokenAmount
     ) internal returns (address lpPair) {
-        // Create pair on Uniswap V2 Factory
-        lpPair = IUniswapV2Factory(UNISWAP_V2_FACTORY).createPair(datasetToken, WETH);
-
+        // Check if pair already exists
+        lpPair = IUniswapV2Factory(UNISWAP_V2_FACTORY).getPair(datasetToken, WETH);
+        
+        // Create pair only if it doesn't exist
         if (lpPair == address(0)) {
-            revert GraduationFailed("pair_creation_failed");
+            lpPair = IUniswapV2Factory(UNISWAP_V2_FACTORY).createPair(datasetToken, WETH);
+            
+            if (lpPair == address(0)) {
+                revert GraduationFailed("pair_creation_failed");
+            }
         }
 
         // Approve router to spend tokens
@@ -359,6 +364,7 @@ interface IBurnPortal {
  */
 interface IUniswapV2Factory {
     function createPair(address tokenA, address tokenB) external returns (address pair);
+    function getPair(address tokenA, address tokenB) external view returns (address pair);
 }
 
 /**
