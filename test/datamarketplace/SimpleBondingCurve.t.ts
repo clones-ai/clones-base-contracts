@@ -1,11 +1,11 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
-import { BondingCurveImplementation, DatasetTokenImplementation } from "../../typechain-types";
+import { BondingCurve, DatasetToken } from "../../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("BondingCurve Basic Tests", function () {
-    let bondingCurve: BondingCurveImplementation;
-    let datasetToken: DatasetTokenImplementation;
+    let bondingCurve: BondingCurve;
+    let datasetToken: DatasetToken;
     let creator: SignerWithAddress;
     let buyer: SignerWithAddress;
     let graduationManager: SignerWithAddress;
@@ -13,21 +13,18 @@ describe("BondingCurve Basic Tests", function () {
     beforeEach(async function () {
         [creator, buyer, graduationManager] = await ethers.getSigners();
 
-        // Deploy DatasetTokenImplementation and initialize
-        const DatasetTokenFactory = await ethers.getContractFactory("DatasetTokenImplementation");
-        datasetToken = await DatasetTokenFactory.deploy();
-        await datasetToken.initialize(
+        // Deploy DatasetToken
+        const DatasetTokenFactory = await ethers.getContractFactory("DatasetToken");
+        datasetToken = await DatasetTokenFactory.deploy(
             "Test Dataset",
             "TDS",
             creator.address,
-            creator.address, // factory
-            5 // burn threshold percentage
+            5
         );
 
-        // Deploy BondingCurveImplementation and initialize
-        const BondingCurveFactory = await ethers.getContractFactory("BondingCurveImplementation");
-        bondingCurve = await BondingCurveFactory.deploy();
-        await bondingCurve.initialize(
+        // Deploy BondingCurve with initial liquidity
+        const BondingCurveFactory = await ethers.getContractFactory("BondingCurve");
+        bondingCurve = await BondingCurveFactory.deploy(
             await datasetToken.getAddress(),
             creator.address,
             creator.address,
@@ -38,8 +35,8 @@ describe("BondingCurve Basic Tests", function () {
 
     describe("Basic Functionality", function () {
         it("should deploy correctly", async function () {
-            expect(await bondingCurve.creator()).to.equal(creator.address);
-            expect(await bondingCurve.isGraduated()).to.be.false;
+            expect(await bondingCurve.CREATOR()).to.equal(creator.address);
+            expect(await bondingCurve.isActive()).to.be.true;
         });
 
         it("should calculate tokens out", async function () {
@@ -64,7 +61,7 @@ describe("BondingCurve Basic Tests", function () {
             const tokensOut = await bondingCurve.getTokensOut(purchaseAmount);
             
             await expect(
-                bondingCurve.connect(buyer).buyTokens(tokensOut, { value: purchaseAmount })
+                bondingCurve.connect(buyer).buy(tokensOut, { value: purchaseAmount })
             ).to.not.be.reverted;
 
             expect(await datasetToken.balanceOf(buyer.address)).to.equal(tokensOut);
@@ -72,7 +69,7 @@ describe("BondingCurve Basic Tests", function () {
 
         it("should revert invalid purchases", async function () {
             await expect(
-                bondingCurve.connect(buyer).buyTokens(0, { value: 0 })
+                bondingCurve.connect(buyer).buy(0, { value: 0 })
             ).to.be.revertedWithCustomError(bondingCurve, "NoETHSent");
         });
     });
