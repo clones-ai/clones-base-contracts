@@ -1,6 +1,9 @@
 # Clones Base Contracts
 
-Official smart contracts for the Clones protocol on the Base L2 network. This project implements a factory-based reward pool system using EIP-1167 minimal proxy pattern for efficient deployment of individual reward pools.
+Official smart contracts for the Clones protocol on the Base L2 network. This repository contains two independent contract systems:
+
+1. **Reward Pool System** - Factory-based reward pools using EIP-1167 minimal proxy pattern
+2. **Data Marketplace System** - Tokenized AI training data marketplace with bonding curves
 
 Built with **Hardhat**, **Ethers.js v6**, and **OpenZeppelin Contracts v5**.
 
@@ -11,55 +14,43 @@ Built with **Hardhat**, **Ethers.js v6**, and **OpenZeppelin Contracts v5**.
 [![Audit Ready](https://img.shields.io/badge/audit-ready-blue)]()
 
 
-## Project Architecture & Standards
+## Contract Systems
 
-This repository implements a modern factory-based architecture for reward pool management. All contracts adhere to high-quality standards ensuring security, gas efficiency, and maintainability.
+### Reward Pool System
 
-### Core Principles
+Modern factory-based architecture for reward pool management with EIP-1167 minimal proxy pattern.
+
+**Core Principles:**
 - **Security First:** Defense-in-depth approach with reentrancy protection, access control, and L2-specific safety features
 - **Gas Optimization:** EIP-1167 minimal proxy pattern reduces deployment costs by 99%+ compared to full contract deployments
 - **Deterministic Addresses:** CREATE2 implementation allows prediction of pool addresses before deployment
 - **Batch Operations:** ClaimRouter enables efficient multi-vault reward claiming in a single transaction
 - **EIP-712 Signatures:** Secure, off-chain signed reward claims with replay protection
 
+**Core Contracts:**
+- **RewardPoolFactory** - Creates deterministic reward pools using EIP-1167 minimal proxy pattern
+- **RewardPoolImplementation** - Master contract containing all pool logic shared by minimal proxies
+- **ClaimRouter** - Enables efficient batch claiming across multiple reward pools
 
-## Core Contracts
+### Data Marketplace System
 
-### 1. RewardPoolFactory
+Tokenized AI training data marketplace with bonding curves, burn-to-download mechanics, and automated Uniswap V2 graduation.
 
-The `RewardPoolFactory` is the core factory contract that creates deterministic reward pools using EIP-1167 minimal proxy pattern.
+**Core Principles:**
+- **EIP-1167 Factory Pattern:** 96%+ gas cost reduction using minimal proxy deployments
+- **Chainlink Oracle Integration:** USD-stable pricing for launch fees and graduation thresholds
+- **Constant Product Bonding Curves:** Automated market makers with virtual reserves
+- **Event-Driven Architecture:** No storage arrays, optimized for The Graph indexing
+- **Permanent Liquidity:** LP tokens burned to 0xdead after Uniswap V2 graduation
 
-**Key Features:**
-- **EIP-1167 Clones:** Deploys lightweight proxy contracts (CREATE2) pointing to a master implementation
-- **Deterministic Addresses:** Pool addresses are predictable using creator + token combination
-- **Token Allowlist:** Only approved tokens can be used for pool creation
-- **Publisher Management:** Role-based system for authorized reward publishers with rotation and grace periods
-- **Minimal Gas Cost:** ~50k gas per pool creation vs ~2M gas for full deployment
-- **Atomic Create+Fund:** Single transaction for pool creation and initial funding
+**Core Contracts:**
+- **DatasetFactory** - EIP-1167 factory for creating dataset tokens with bonding curves
+- **DatasetTokenImplementation** - Master contract for dataset tokens with burn-to-download
+- **BondingCurveImplementation** - Constant product bonding curve with oracle-based graduation
+- **GraduationManager** - Manages graduation from bonding curve to Uniswap V2
+- **BurnPortal** - Manages token burning for authenticated dataset downloads
 
-### 2. RewardPoolImplementation
-
-The `RewardPoolImplementation` serves as the master contract containing all pool logic that is shared by minimal proxies.
-
-**Key Features:**
-- **EIP-712 Signatures:** Secure reward claiming with typed data signatures
-- **Cumulative Rewards:** Prevents double-spending with cumulative reward tracking
-- **Nonce-Based Replay Protection:** Per-account nonces prevent signature reuse
-- **Rate Limiting:** MAX_CLAIMS_PER_BLOCK = 50 with circuit breakers
-- **Fee Collection:** Transparent 10% platform fee on all reward claims
-- **Creator Withdrawals:** Creators can withdraw freely - backend enforces allocation safety checks
-- **Security Monitoring:** High-value claim detection and suspicious activity alerts
-
-### 3. ClaimRouter
-
-The `ClaimRouter` enables efficient batch claiming across multiple reward pools in a single transaction.
-
-**Key Features:**
-- **Multi-Vault Batching:** Claim rewards from multiple pools atomically
-- **Gas Optimization:** Reduces transaction costs for users with multiple active pools
-- **Factory Verification:** Only processes claims from approved factory-created pools
-- **Batch Size Limits:** Configurable limits prevent gas exhaustion attacks
-- **Atomic Operations:** All claims succeed or fail together
+📖 **Detailed Documentation:** See [contracts/datamarketplace/README.md](./contracts/datamarketplace/README.md)
 
 ## Quick Start
 
@@ -80,14 +71,14 @@ BASE_RPC_URL=https://mainnet.base.org
 ETHERSCAN_API_KEY=your_basescan_api_key
 ```
 
-**⚠️ Never commit your `.env` file**
+**Never commit your `.env` file**
 
 ## Testing
 
-### Unit Tests (150 tests, 100% passing)
+### Unit Tests (150 tests, 100% passing - Reward Pool System)
 
 ```bash
-# Run all tests
+# Run all tests (Reward Pool System)
 npm test
 
 # Run with coverage
@@ -99,6 +90,8 @@ npx hardhat test test/RewardPoolImplementation.t.ts
 # Quick security check
 npx hardhat test test/SecurityQuickTest.t.ts
 ```
+
+**Note:** Data Marketplace System tests will be added in future updates.
 
 ## Security Testing
 
@@ -143,7 +136,7 @@ npm run coverage
 
 ## Deployment
 
-### Deploy Factory System
+### Deploy Reward Pool System
 
 ```bash
 # Deploy to Base Sepolia (testnet)
@@ -158,6 +151,8 @@ npm run deploy-and-test:baseSepolia
 # Validate system functionality
 npm run final-validation:baseSepolia
 ```
+
+**Note:** Data Marketplace System deployment scripts will be added in future updates.
 
 ## Available Commands
 
