@@ -20,8 +20,11 @@ export async function loadArgsFileOrEmpty(filePath?: string): Promise<any[]> {
     return JSON.parse(raw);
 }
 
-export async function readRegistry(networkName: string) {
-    const p = path.resolve(process.cwd(), "deployments", `${networkName}.json`);
+export async function readRegistry(networkName: string, subdirectory?: string) {
+    const basePath = subdirectory
+        ? path.resolve(process.cwd(), "deployments", subdirectory)
+        : path.resolve(process.cwd(), "deployments");
+    const p = path.resolve(basePath, `${networkName}.json`);
     try {
         const raw = await fs.readFile(p, "utf8");
         return JSON.parse(raw);
@@ -30,9 +33,24 @@ export async function readRegistry(networkName: string) {
     }
 }
 
-export async function writeRegistry(networkName: string, data: any) {
-    const dir = path.resolve(process.cwd(), "deployments");
+export async function writeRegistry(networkName: string, data: any, subdirectory?: string, includeTimestamp: boolean = false) {
+    const dir = subdirectory
+        ? path.resolve(process.cwd(), "deployments", subdirectory)
+        : path.resolve(process.cwd(), "deployments");
     await fs.mkdir(dir, { recursive: true });
-    const p = path.resolve(dir, `${networkName}.json`);
+
+    let filename = networkName;
+    if (includeTimestamp) {
+        const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+        filename = `${networkName}-${timestamp}`;
+    }
+
+    const p = path.resolve(dir, `${filename}.json`);
     await fs.writeFile(p, JSON.stringify(data, null, 2) + "\n", "utf8");
+
+    // Also write a "latest" version for easy reference
+    if (includeTimestamp) {
+        const latestPath = path.resolve(dir, `${networkName}-latest.json`);
+        await fs.writeFile(latestPath, JSON.stringify(data, null, 2) + "\n", "utf8");
+    }
 }

@@ -18,8 +18,8 @@ async function main() {
         throw new Error("Verification only supports Base Sepolia (84532) or Base Mainnet (8453)");
     }
 
-    // Read deployment registry
-    const deployments = await readRegistry(network.name);
+    // Read deployment registry from datamarketplace subdirectory
+    const deployments = await readRegistry(`${network.name}-latest`, "datamarketplace");
     if (!deployments.contracts) {
         throw new Error("No deployments found. Deploy contracts first.");
     }

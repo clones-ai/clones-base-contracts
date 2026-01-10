@@ -15,8 +15,8 @@ async function main() {
     console.log("Chain ID:", chainId);
     console.log("Tester:", deployer.address);
 
-    // Read deployment registry
-    const deployments = await readRegistry(network.name);
+    // Read deployment registry from datamarketplace subdirectory
+    const deployments = await readRegistry(`${network.name}-latest`, "datamarketplace");
     if (!deployments.contracts?.DatasetFactory?.address) {
         throw new Error("DatasetFactory not found. Deploy system first.");
     }
@@ -66,11 +66,16 @@ async function main() {
 
         // Test 3: Predict dataset addresses
         console.log("\nTest 3: Address Prediction");
+
+        // Get current nonce for the deployer
+        const currentNonce = await datasetFactory.creatorNonce(deployer.address);
+        console.log("Current creator nonce:", currentNonce.toString());
+
         const [predictedToken, predictedCurve] = await datasetFactory.predictDatasetAddressWithNonce(
             deployer.address,
             "Test Dataset",
             "TEST",
-            0
+            currentNonce
         );
         console.log("Predicted token:", predictedToken);
         console.log("Predicted curve:", predictedCurve);
@@ -87,30 +92,64 @@ async function main() {
         );
 
         console.log("Transaction hash:", createTx.hash);
-        await createTx.wait();
-        console.log("Dataset created successfully!");
+        const receipt = await createTx.wait();
+        console.log("Transaction status:", receipt?.status === 1 ? "SUCCESS" : "FAILED");
+        console.log("Gas used:", receipt?.gasUsed.toString());
+
+        // Parse events to get actual created addresses
+        const datasetCreatedEvent = receipt?.logs
+            .map(log => {
+                try {
+                    return datasetFactory.interface.parseLog({
+                        topics: log.topics as string[],
+                        data: log.data
+                    });
+                } catch {
+                    return null;
+                }
+            })
+            .find(event => event?.name === "DatasetCreated");
+
+        if (datasetCreatedEvent) {
+            console.log("Dataset created successfully!");
+            console.log("Actual token from event:", datasetCreatedEvent.args.datasetToken);
+            console.log("Actual curve from event:", datasetCreatedEvent.args.bondingCurve);
+        } else {
+            console.log("Warning: No DatasetCreated event found!");
+        }
 
         // Test 5: Verify created dataset
         console.log("\nTest 5: Dataset Verification");
 
-        // Get created dataset info using the predicted token address
-        const [creator, bondingCurveAddress] = await datasetFactory.getDatasetInfo(predictedToken);
+        // Use actual addresses from event
+        const actualTokenAddress = datasetCreatedEvent?.args.datasetToken || predictedToken;
+        const actualCurveAddress = datasetCreatedEvent?.args.bondingCurve || predictedCurve;
+
+        // Small delay to ensure state is propagated (RPC cache issues)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Get created dataset info using the actual token address
+        const [creator, bondingCurveAddress] = await datasetFactory.getDatasetInfo(actualTokenAddress);
         console.log("Created dataset:");
         console.log("- Creator:", creator);
-        console.log("- Token address:", predictedToken);
+        console.log("- Token address:", actualTokenAddress);
         console.log("- Curve address:", bondingCurveAddress);
 
         // Verify addresses match prediction
-        if (bondingCurveAddress === predictedCurve) {
-            console.log("Address prediction accurate!");
+        if (actualTokenAddress === predictedToken && actualCurveAddress === predictedCurve) {
+            console.log("✓ Address prediction accurate!");
         } else {
-            console.log("Address prediction mismatch!");
+            console.log("✗ Address prediction mismatch!");
+            console.log("  Expected token:", predictedToken);
+            console.log("  Actual token:", actualTokenAddress);
+            console.log("  Expected curve:", predictedCurve);
+            console.log("  Actual curve:", actualCurveAddress);
         }
 
         // Test 6: Basic token interactions
         console.log("\nTest 6: Token Interactions");
-        const token = await ethers.getContractAt("DatasetTokenImplementation", predictedToken);
-        const curve = await ethers.getContractAt("BondingCurveImplementation", bondingCurveAddress);
+        const token = await ethers.getContractAt("DatasetTokenImplementation", actualTokenAddress);
+        const curve = await ethers.getContractAt("BondingCurveImplementation", actualCurveAddress);
 
         const tokenName = await token.name();
         const tokenSymbol = await token.symbol();

@@ -177,30 +177,55 @@ async function main() {
         console.log("\nPhase 4: System Configuration");
 
         console.log("\nSetting DatasetFactory in BurnPortal...");
-        await burnPortal.setDatasetFactory(datasetFactoryAddress);
+        let tx = await burnPortal.setDatasetFactory(datasetFactoryAddress);
+        await tx.wait();
         console.log("BurnPortal configured with DatasetFactory");
 
         console.log("\nSetting DatasetFactory in GraduationManager...");
-        await graduationManager.setDatasetFactory(datasetFactoryAddress);
+        tx = await graduationManager.setDatasetFactory(datasetFactoryAddress);
+        await tx.wait();
         console.log("GraduationManager configured with DatasetFactory");
 
         console.log("\nSetting GraduationManager in BurnPortal...");
-        await burnPortal.setGraduationManager(graduationManagerAddress);
+        tx = await burnPortal.setGraduationManager(graduationManagerAddress);
+        await tx.wait();
         console.log("BurnPortal configured with GraduationManager");
 
         console.log("\nSetting BurnPortal in GraduationManager...");
-        await graduationManager.setBurnPortal(burnPortalAddress);
+        tx = await graduationManager.setBurnPortal(burnPortalAddress);
+        await tx.wait();
         console.log("GraduationManager configured with BurnPortal");
 
         // CRITICAL: Configure DatasetFactory with managers (required for dataset creation)
         console.log("\nConfiguring DatasetFactory with managers...");
-        await datasetFactory.setGraduationManager(graduationManagerAddress);
-        console.log("DatasetFactory configured with GraduationManager");
-        
-        await datasetFactory.setBurnPortal(burnPortalAddress);
-        console.log("DatasetFactory configured with BurnPortal");
-        
+
+        // Verify deployer is the timelock
+        const factoryTimelock = await datasetFactory.TIMELOCK();
+        console.log("Factory TIMELOCK:", factoryTimelock);
+        console.log("Deployer address:", deployer.address);
+        console.log("Deployer is Timelock:", factoryTimelock.toLowerCase() === deployer.address.toLowerCase());
+
+        console.log("\nSetting GraduationManager:", graduationManagerAddress);
+        tx = await datasetFactory.setGraduationManager(graduationManagerAddress);
+        const receipt1 = await tx.wait();
+        console.log("Transaction status:", receipt1?.status === 1 ? "SUCCESS" : "FAILED");
+        console.log("Transaction hash:", receipt1?.hash);
+        console.log("Gas used:", receipt1?.gasUsed.toString());
+
+        console.log("\nSetting BurnPortal:", burnPortalAddress);
+        tx = await datasetFactory.setBurnPortal(burnPortalAddress);
+        const receipt2 = await tx.wait();
+        console.log("Transaction status:", receipt2?.status === 1 ? "SUCCESS" : "FAILED");
+        console.log("Transaction hash:", receipt2?.hash);
+        console.log("Gas used:", receipt2?.gasUsed.toString());
+
         // Verify factory is ready for dataset creation
+        console.log("\nVerifying configuration...");
+        const currentGraduationManager = await datasetFactory.graduationManager();
+        const currentBurnPortal = await datasetFactory.burnPortal();
+        console.log("Factory.graduationManager:", currentGraduationManager);
+        console.log("Factory.burnPortal:", currentBurnPortal);
+
         const isReady = await datasetFactory.isReadyForDatasetCreation();
         console.log("DatasetFactory ready for dataset creation:", isReady);
         if (!isReady) {
@@ -210,7 +235,7 @@ async function main() {
         // Save deployment registry
         deployments.timestamp = new Date().toISOString();
         deployments.configured = true;
-        await writeRegistry(network.name, deployments);
+        await writeRegistry(network.name, deployments, "datamarketplace", true);
 
         console.log("\nComplete Datamarketplace System Deployment Successful!");
         console.log("\nSummary:");
@@ -219,7 +244,7 @@ async function main() {
         console.log("- GraduationManager:", graduationManagerAddress);
         console.log("- BurnPortal:", burnPortalAddress);
         console.log("- DatasetFactory:", datasetFactoryAddress);
-        console.log(`- Registry saved to: deployments/${network.name}.json`);
+        console.log(`- Registry saved to: deployments/datamarketplace/${network.name}.json`);
 
         // Verification commands
         console.log("\nVerification Commands:");
@@ -235,7 +260,7 @@ async function main() {
 
     } catch (error) {
         console.error("Deployment failed:", error);
-        await writeRegistry(network.name, deployments); // Save partial progress
+        await writeRegistry(network.name, deployments, "datamarketplace", true); // Save partial progress
         throw error;
     }
 }
